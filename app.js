@@ -39,6 +39,91 @@ let tab = ["today", "weeks", "goals"].includes(location.hash.slice(1)) ? locatio
 let sel = clampPlan(today());
 let loginMsg = "", busy = false;
 
+/* ---------- Face ID / Touch ID lock (WebAuthn passkey on this device) ---------- */
+const LOCK_KEY = "gtLockCred";
+const RELOCK_AFTER_MS = 60 * 60 * 1000; // re-lock after the app has been in the background for 1 hour
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const BIO = isIOS ? "Face ID" : "Touch ID";
+let lockSupported = false, lockMsg = "", hiddenAt = 0, lockAbort = null;
+const lockCred = () => { try { return localStorage.getItem(LOCK_KEY); } catch (_) { return null; } };
+let locked = !!lockCred();
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+const rnd = (n) => crypto.getRandomValues(new Uint8Array(n));
+try {
+  if (window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then((ok) => { lockSupported = !!ok; if (tab === "goals") render(); }).catch(() => {});
+  }
+} catch (_) {}
+
+async function verifyBiometric(signal) {
+  const cred = lockCred(); if (!cred) return true;
+  const a = await navigator.credentials.get({ signal, publicKey: {
+    challenge: rnd(32), timeout: 60000, userVerification: "required",
+    allowCredentials: [{ type: "public-key", id: unb64u(cred), transports: ["internal"] }]
+  } });
+  if (!a) return false;
+  const flags = new Uint8Array(a.response.authenticatorData)[32];
+  return (flags & 0x04) !== 0; // "user verified" flag: Face ID / Touch ID / device passcode succeeded
+}
+async function unlock(auto) {
+  // A tap cancels any prompt still waiting (e.g. an automatic one the browser held back) and starts fresh.
+  if (lockAbort) { try { lockAbort.abort(); } catch (_) {} }
+  const ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  lockAbort = ctl; lockMsg = "";
+  try {
+    if (await verifyBiometric(ctl ? ctl.signal : undefined)) { locked = false; lockMsg = ""; }
+    else lockMsg = "Couldn't verify. Try again.";
+  } catch (err) {
+    if (ctl && ctl.signal.aborted) return; // replaced by a newer attempt
+    if (!auto) lockMsg = err && err.name === "NotAllowedError" ? "Cancelled or not recognised. Tap to try again." : "Couldn't use " + BIO + " (" + (err && err.name || "error") + ").";
+  }
+  if (lockAbort === ctl) lockAbort = null;
+  render();
+}
+async function enableLock() {
+  try {
+    const c = await navigator.credentials.create({ publicKey: {
+      challenge: rnd(32), rp: { name: "My Goal Tracker" },
+      user: { id: rnd(16), name: (user && user.email) || "me", displayName: "Goal Tracker lock" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "preferred" },
+      timeout: 60000, attestation: "none"
+    } });
+    localStorage.setItem(LOCK_KEY, b64u(c.rawId));
+    lockMsg = BIO + " lock is on for this device.";
+  } catch (err) {
+    lockMsg = err && err.name === "NotAllowedError" ? "Setup was cancelled." : "Couldn't turn on the lock (" + (err && err.name || "error") + ").";
+  }
+  render();
+}
+async function disableLock() {
+  try {
+    if (await verifyBiometric()) { localStorage.removeItem(LOCK_KEY); lockMsg = BIO + " lock is off for this device."; }
+  } catch (_) { lockMsg = "Verification cancelled; the lock is still on."; }
+  render();
+}
+function viewLock() {
+  return `<div class="center" style="align-items:center;text-align:center">
+    <img class="logo" src="icon-192.png" alt="">
+    <h1>Locked</h1><p class="sub">Unlock with ${BIO} to see your tracker.</p>
+    <button class="btn" data-act="unlock" style="margin-top:20px;min-width:240px">${isIOS ? "🙂" : "☝️"} Unlock with ${BIO}</button>
+    <div class="err" style="margin-top:12px">${esc(lockMsg)}</div>
+    <button class="linkbtn" data-act="signout" style="margin-top:28px">Can't unlock? Sign out and use your password</button></div>`;
+}
+function lockCardHtml() {
+  const on = !!lockCred();
+  let h = `<h2>App lock</h2><div class="card stack">`;
+  if (on) h += `<div>🔒 <b>${BIO} lock is on</b> for this device. The app asks every time it opens, and again after 1 hour in the background.</div>
+      <button class="btn ghost wide" data-act="lockoff">Turn off ${BIO} lock</button>`;
+  else if (lockSupported) h += `<div class="muted">Require ${BIO} every time this app opens on this device.</div>
+      <button class="btn wide" data-act="lockon">Turn on ${BIO} lock</button>`;
+  else h += `<div class="muted">This browser can't use ${BIO} for web apps. On iPhone, open the app from your home screen; on Mac, use Safari or Chrome on a Mac with Touch ID.</div>`;
+  h += `<div class="muted" id="lockMsg">${esc(lockMsg)}</div>
+    <div class="muted" style="font-size:12px">Set it up separately on each device. Your login password still protects your data either way.</div></div>`;
+  return h;
+}
+
 /* ---------- scoring ---------- */
 const dayRec = (k) => state.days[k] || {};
 const dayScore = (k) => { const r = dayRec(k); return (r.l ? 1 : 0) + (r.s ? 1 : 0) + (r.g ? 1 : 0); };
@@ -211,6 +296,7 @@ function viewGoals() {
       <li><b>15+ / 21</b> ticks in a week = success week ★</li>
       <li><b>Never miss twice</b> consecutively</li>
       <li><b>Floor day:</b> bed by 11, 15 min study, 15 min movement</li></ul></div>
+    ${lockCardHtml()}
     <h2>Account & backup</h2><div class="card stack">
       <div class="muted">Signed in as ${esc(user && user.email || "")}</div>
       <div class="row"><button class="btn ghost" data-act="export" style="flex:1">Export my data</button>
@@ -247,6 +333,7 @@ function render() {
   else if (loadError) h = `<div class="center"><h1>Can't load</h1><div class="card">${esc(loadError)}<p class="muted">Check your internet connection and reload. After the first successful load the app also works offline.</p></div></div>`;
   else if (!authReady) h = `<div class="center"><p class="muted">Loading…</p></div>`;
   else if (!user) h = viewLogin();
+  else if (locked && lockCred()) h = viewLock();
   else {
     h = tab === "today" ? viewToday() : tab === "weeks" ? viewWeeks() : viewGoals();
     h += `<nav class="tabs"><div class="in">${[["today", "✅", "Today"], ["weeks", "🗓️", "Weeks"], ["goals", "🏁", "Milestones"]]
@@ -282,7 +369,15 @@ document.addEventListener("click", async (e) => {
   if (act === "prev") { sel = clampPlan(addDays(sel, -1)); return render(); }
   if (act === "next") { sel = clampPlan(addDays(sel, 1)); return render(); }
   if (act === "today") { sel = clampPlan(today()); return render(); }
-  if (act === "signout") { await sync.logOut(); state = { days: {}, weights: {} }; return; }
+  if (act === "signout") {
+    // Signing out removes the lock on this device; getting back in needs the account password.
+    try { localStorage.removeItem(LOCK_KEY); } catch (_) {}
+    locked = false; lockMsg = "";
+    await sync.logOut(); state = { days: {}, weights: {} }; return;
+  }
+  if (act === "unlock") return unlock(false);
+  if (act === "lockon") return enableLock();
+  if (act === "lockoff") return disableLock();
   if (act === "reset") {
     const em = (document.getElementById("email").value || "").trim();
     const el = document.getElementById("loginMsg");
@@ -366,7 +461,19 @@ function checkDay() {
   const k = key(today());
   if (k !== lastDay) { if (key(sel) === lastDay) sel = clampPlan(today()); lastDay = k; render(); }
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) checkDay(); });
+document.addEventListener("visibilitychange", () => {
+  const root = document.getElementById("root");
+  if (document.hidden) {
+    hiddenAt = Date.now();
+    if (lockCred() && user) root.style.visibility = "hidden"; // keep data out of the app-switcher preview
+    return;
+  }
+  root.style.visibility = "";
+  if (lockCred() && user && !locked && hiddenAt && Date.now() - hiddenAt > RELOCK_AFTER_MS) {
+    locked = true; lockMsg = ""; render(); unlock(true);
+  }
+  checkDay();
+});
 setInterval(checkDay, 60000);
 
 /* ---------- boot ---------- */
@@ -384,6 +491,7 @@ async function boot() {
         showStatus);
     } else { sync.unsubscribe(); state = { days: {}, weights: {} }; }
     render();
+    if (u && locked && lockCred()) unlock(true); // try to show the Face ID / Touch ID prompt straight away
   });
 }
 boot();
