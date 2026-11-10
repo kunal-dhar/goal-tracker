@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F3EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16140F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Goals">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>My Goal Tracker</title>
+<style>
+:root{
+  --bg:#F6F3EE; --card:#FFFFFF; --ink:#1F1B16; --muted:#857C70; --line:#E7E1D8;
+  --accent:#2F6F4F; --accent-soft:#E2EFE7; --warn:#B4532A; --warn-soft:#F8E6DC;
+  --gold:#C58B1C; --gold-soft:#F7EDD6; --floor:#5B6BA8; --floor-soft:#E6E9F5;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16140F; --card:#211E18; --ink:#F2EDE4; --muted:#9B9184; --line:#352F27;
+    --accent:#6CC296; --accent-soft:#1F3328; --warn:#E58A5F; --warn-soft:#3A2419;
+    --gold:#E7B54A; --gold-soft:#372C14; --floor:#93A1DB; --floor-soft:#232842;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
+#root{max-width:520px;margin:0 auto;padding:16px 16px calc(96px + env(safe-area-inset-bottom))}
+@media (min-width:900px){ #root{max-width:560px;padding-top:28px} }
+h1{font-size:28px;letter-spacing:-.02em;margin:8px 0 2px}
+h2{font-size:17px;margin:24px 0 10px}
+.sub{color:var(--muted);font-size:14px;margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:12px}
+.row{display:flex;align-items:center;gap:10px}
+.between{justify-content:space-between}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+.datebar{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+.navbtn{width:40px;height:40px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-size:20px;line-height:1}
+.navbtn:disabled{opacity:.3}
+.datelabel{text-align:center}
+.datelabel b{display:block;font-size:17px}
+.datelabel span{font-size:13px;color:var(--muted)}
+.todaylink{font-size:13px;color:var(--accent);font-weight:600;margin-top:2px}
+.habit{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);
+  border:1.5px solid var(--line);border-radius:18px;padding:16px;margin-top:10px;transition:background .15s,border-color .15s}
+.habit .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px;background:var(--bg);flex:none}
+.habit .t{flex:1}
+.habit .t b{display:block;font-size:16px}
+.habit .t span{font-size:13px;color:var(--muted)}
+.check{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;flex:none;font-size:16px;color:transparent}
+.habit.on{border-color:var(--accent);background:var(--accent-soft)}
+.habit.on .check{background:var(--accent);border-color:var(--accent);color:#fff}
+.habit.floor.on{border-color:var(--floor);background:var(--floor-soft)}
+.habit.floor.on .check{background:var(--floor);border-color:var(--floor)}
+.habit:disabled{opacity:.45}
+.banner{border-radius:14px;padding:12px 14px;font-size:14px;margin-top:12px;line-height:1.4}
+.banner.warn{background:var(--warn-soft);color:var(--warn)}
+.banner.good{background:var(--accent-soft);color:var(--accent)}
+.banner.info{background:var(--floor-soft);color:var(--floor)}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:visible;position:relative;margin-top:10px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:6px;transition:width .25s}
+.bar .mark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--gold)}
+.big{font-size:30px;font-weight:700;letter-spacing:-.02em}
+.muted{color:var(--muted);font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;text-align:center}
+.stat b{display:block;font-size:22px}
+.stat span{font-size:12px;color:var(--muted)}
+.wk{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.wk:last-child{border-bottom:0}
+.wk .n{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.wk .lbl{font-size:12px;color:var(--muted);margin-bottom:5px}
+.cells{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cell{aspect-ratio:1;border-radius:7px;background:var(--bg);border:1px solid var(--line);font-size:10px;display:grid;place-items:center;color:var(--muted)}
+.cell.na{visibility:hidden}
+.cell.l1{background:color-mix(in srgb,var(--accent) 30%,var(--card));border-color:transparent;color:var(--ink)}
+.cell.l2{background:color-mix(in srgb,var(--accent) 60%,var(--card));border-color:transparent;color:#fff}
+.cell.l3{background:var(--accent);border-color:transparent;color:#fff}
+.cell.fl{box-shadow:inset 0 0 0 2px var(--floor)}
+.cell.today{outline:2px solid var(--gold);outline-offset:1px}
+.cell.future{opacity:.45}
+.score{min-width:52px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums}
+.score .star{color:var(--gold)}
+.dayhead{display:grid;grid-template-columns:34px 1fr 52px;gap:8px;padding:0 4px;font-size:11px;color:var(--muted)}
+.dayhead .cells div{text-align:center}
+.ms{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.ms:last-child{border-bottom:0}
+.ms .dot{width:12px;height:12px;border-radius:50%;margin-top:5px;flex:none;background:var(--line)}
+.ms.done .dot{background:var(--accent)}
+.ms.next .dot{background:var(--gold)}
+.ms b{font-size:15px}
+.ms .d{font-size:12px;color:var(--muted)}
+.ms .tg{font-size:14px;margin:4px 0}
+.ms .cel{font-size:13px;color:var(--gold)}
+.ms .pr{font-size:12px;color:var(--muted);margin-top:4px}
+input[type=number],input[type=email],input[type=password]{font:inherit;font-size:17px;width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.btn{background:var(--accent);color:#fff;font-weight:600;padding:12px 18px;border-radius:12px;white-space:nowrap;text-align:center}
+.btn.ghost{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.btn.wide{display:block;width:100%}
+.btn:disabled{opacity:.6}
+.linkbtn{color:var(--accent);font-size:14px;font-weight:600}
+.rules{font-size:14px;line-height:1.55;margin:0;padding-left:18px}
+.rules li{margin:4px 0}
+.stack > * + *{margin-top:10px}
+.err{color:var(--warn);font-size:14px;min-height:1.2em}
+.tabs{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);
+  padding:8px 8px calc(8px + env(safe-area-inset-bottom));display:flex;justify-content:center}
+.tabs .in{display:flex;max-width:520px;width:100%}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);padding:4px 0}
+.tab .ti{font-size:20px;line-height:1.2}
+.tab.on{color:var(--accent);font-weight:600}
+.status{position:fixed;top:calc(8px + env(safe-area-inset-top));right:12px;font-size:11px;color:var(--muted);
+  background:var(--card);border:1px solid var(--line);border-radius:20px;padding:4px 10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
+.status.show{opacity:1}
+.status.off{color:var(--warn)}
+svg.spark{width:100%;height:90px;display:block;margin-top:8px}
+.center{min-height:70vh;display:flex;flex-direction:column;justify-content:center}
+.logo{width:64px;height:64px;border-radius:16px;display:block;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div id="root"><div class="center"><p class="muted">Loading…</p></div></div>
+<div class="status" id="status"></div>
+<script type="module" src="app.js"></script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+}
+</script>
+</body>
+</html>

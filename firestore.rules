@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // One document per day: users/{uid}/days/2026-11-11 -> { l, s, g, f }
+    match /users/{uid}/days/{day} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.keys().hasOnly(['l', 's', 'g', 'f', 'updatedAt']);
+    }
+
+    // One document per weigh-in: users/{uid}/weights/2026-11-11 -> { kg }
+    match /users/{uid}/weights/{day} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.keys().hasOnly(['kg', 'updatedAt'])
+        && request.resource.data.kg is number
+        && request.resource.data.kg > 20 && request.resource.data.kg < 300;
+    }
+
+    // Everything else is closed.
+  }
+}
