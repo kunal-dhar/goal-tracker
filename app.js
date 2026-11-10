@@ -66,6 +66,32 @@ async function verifyBiometric(signal) {
   const flags = new Uint8Array(a.response.authenticatorData)[32];
   return (flags & 0x04) !== 0; // "user verified" flag: Face ID / Touch ID / device passcode succeeded
 }
+// WebAuthn only works when the page is visible and focused. Right after launch (or returning
+// from the background) iOS can take a moment to hand focus over, so wait for it first.
+function waitForFocus(maxMs) {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    (function check() {
+      if (document.visibilityState === "visible" && document.hasFocus()) return resolve(true);
+      if (Date.now() - t0 > maxMs) return resolve(false);
+      setTimeout(check, 100);
+    })();
+  });
+}
+async function autoUnlock() {
+  if (!locked || !lockCred()) return;
+  await waitForFocus(3000);
+  await new Promise((r) => setTimeout(r, 250));
+  if (!locked) return;
+  const t0 = Date.now();
+  const ok = await unlock(true);
+  // An instant rejection means iOS wasn't ready (not a user cancel): try once more.
+  if (!ok && locked && Date.now() - t0 < 900) {
+    await new Promise((r) => setTimeout(r, 700));
+    await waitForFocus(2000);
+    if (locked) await unlock(true);
+  }
+}
 async function unlock(auto) {
   // A tap cancels any prompt still waiting (e.g. an automatic one the browser held back) and starts fresh.
   if (lockAbort) { try { lockAbort.abort(); } catch (_) {} }
@@ -75,11 +101,12 @@ async function unlock(auto) {
     if (await verifyBiometric(ctl ? ctl.signal : undefined)) { locked = false; lockMsg = ""; }
     else lockMsg = "Couldn't verify. Try again.";
   } catch (err) {
-    if (ctl && ctl.signal.aborted) return; // replaced by a newer attempt
+    if (ctl && ctl.signal.aborted) return false; // replaced by a newer attempt
     if (!auto) lockMsg = err && err.name === "NotAllowedError" ? "Cancelled or not recognised. Tap to try again." : "Couldn't use " + BIO + " (" + (err && err.name || "error") + ").";
   }
   if (lockAbort === ctl) lockAbort = null;
   render();
+  return !locked;
 }
 async function enableLock() {
   try {
@@ -104,9 +131,9 @@ async function disableLock() {
   render();
 }
 function viewLock() {
-  return `<div class="center" style="align-items:center;text-align:center">
+  return `<div class="center" data-lockscreen style="align-items:center;text-align:center;min-height:90vh;cursor:pointer">
     <img class="logo" src="icon-192.png" alt="">
-    <h1>Locked</h1><p class="sub">Unlock with ${BIO} to see your tracker.</p>
+    <h1>Locked</h1><p class="sub">Tap anywhere to unlock with ${BIO}.</p>
     <button class="btn" data-act="unlock" style="margin-top:20px;min-width:240px">${isIOS ? "🙂" : "☝️"} Unlock with ${BIO}</button>
     <div class="err" style="margin-top:12px">${esc(lockMsg)}</div>
     <button class="linkbtn" data-act="signout" style="margin-top:28px">Can't unlock? Sign out and use your password</button></div>`;
@@ -350,6 +377,7 @@ function goTab(name) {
   render(); window.scrollTo(0, 0);
   if (tab === "weeks") { const el = document.getElementById("w" + weekOf(clampPlan(today()))); if (el) el.scrollIntoView({ block: "center" }); }
 }
+window.addEventListener("pageshow", () => { if (user && locked && lockCred() && !lockAbort) autoUnlock(); });
 window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (["today", "weeks", "goals"].includes(h) && h !== tab) goTab(h); });
 
 /* ---------- actions ---------- */
@@ -363,7 +391,8 @@ function authError(e) {
 }
 
 document.addEventListener("click", async (e) => {
-  const b = e.target.closest("button"); if (!b) return;
+  const b = e.target.closest("button");
+  if (!b) { if (e.target.closest("[data-lockscreen]")) unlock(false); return; }
   if (b.dataset.tab) return goTab(b.dataset.tab);
   const act = b.dataset.act;
   if (act === "prev") { sel = clampPlan(addDays(sel, -1)); return render(); }
@@ -470,7 +499,7 @@ document.addEventListener("visibilitychange", () => {
   }
   root.style.visibility = "";
   if (lockCred() && user && !locked && hiddenAt && Date.now() - hiddenAt > RELOCK_AFTER_MS) {
-    locked = true; lockMsg = ""; render(); unlock(true);
+    locked = true; lockMsg = ""; render(); autoUnlock();
   }
   checkDay();
 });
@@ -491,7 +520,7 @@ async function boot() {
         showStatus);
     } else { sync.unsubscribe(); state = { days: {}, weights: {} }; }
     render();
-    if (u && locked && lockCred()) unlock(true); // try to show the Face ID / Touch ID prompt straight away
+    if (u && locked && lockCred()) autoUnlock(); // show the Face ID / Touch ID prompt straight away
   });
 }
 boot();
