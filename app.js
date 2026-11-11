@@ -28,7 +28,7 @@ const LIFTS = [
   { k: "bench", name: "Bench", color: "var(--floor)" },
   { k: "deadlift", name: "Deadlift", color: "var(--gold)" }
 ];
-const TOTAL_Q = 8; // plan quarters, 3 months each from the start date
+const TOTAL_Q = 9; // calendar quarters in the plan: Q4 2026 … Q4 2028
 
 /* ---------- date helpers ---------- */
 const d0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -43,12 +43,18 @@ const clampPlan = (d) => (d < START ? START : d > END ? END : d);
 const weekOf = (d) => Math.floor(Math.round((d0(d) - WEEK1_SUN) / 864e5) / 7) + 1;
 const weekSun = (n) => addDays(WEEK1_SUN, (n - 1) * 7);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-// Plan quarters: Q1 = 11 Nov 2026 – 10 Feb 2027, Q2 = 11 Feb – 10 May 2027, … Q8 ends with the plan.
-const qStart = (n) => new Date(START.getFullYear(), START.getMonth() + 3 * (n - 1), START.getDate());
-const qEnd = (n) => (n >= TOTAL_Q ? END : addDays(qStart(n + 1), -1));
-const quarterOf = (d) => { for (let n = TOTAL_Q; n > 1; n--) if (d0(d) >= qStart(n)) return n; return 1; };
-const qLabel = (n) => "Q" + n + " · " + fmt(qStart(n)) + " – " + fmt(qEnd(n), true);
-const qShort = (n) => "Q" + n + " · " + MON[qStart(n).getMonth()] + " ’" + String(qStart(n).getFullYear()).slice(2);
+// Calendar quarters (Q1 = Jan–Mar … Q4 = Oct–Dec). Stored as q1, q2, … counting from the plan's
+// first quarter: q1 = Q4 2026, q2 = Q1 2027, … q9 = Q4 2028.
+const Q0 = new Date(START.getFullYear(), Math.floor(START.getMonth() / 3) * 3, 1); // 1 Oct 2026
+const calStart = (n) => new Date(Q0.getFullYear(), Q0.getMonth() + 3 * (n - 1), 1);
+const qStart = (n) => (n === 1 ? START : calStart(n));
+const qEnd = (n) => (n >= TOTAL_Q ? END : addDays(calStart(n + 1), -1));
+const quarterOf = (d) => { for (let n = TOTAL_Q; n > 1; n--) if (d0(d) >= calStart(n)) return n; return 1; };
+const qNum = (n) => Math.floor(calStart(n).getMonth() / 3) + 1;
+const qYear = (n) => calStart(n).getFullYear();
+const qName = (n) => "Q" + qNum(n) + " " + qYear(n);                       // "Q4 2026"
+const qShort = (n) => "Q" + qNum(n) + " ’" + String(qYear(n)).slice(2);     // "Q4 ’26"
+const qLabel = (n) => qName(n) + " · " + MON[calStart(n).getMonth()] + " – " + MON[calStart(n).getMonth() + 2];
 
 /* ---------- state ---------- */
 let state = { days: {}, weights: {}, lifts: {} };
@@ -286,7 +292,7 @@ function viewToday() {
 
   if (liftsLoaded && t >= START && !state.lifts["q" + quarterOf(t)]) {
     const qn = quarterOf(t);
-    h += `<div class="banner info">🏋️ <b>${qn === 1 ? "Set your gym baseline." : "New quarter: time to log your lifts."}</b> Record your squat, bench and deadlift for Q${qn}.
+    h += `<div class="banner info">🏋️ <b>${qn === 1 ? "Set your gym baseline." : "New quarter: time to log your lifts."}</b> Record your squat, bench and deadlift for ${qName(qn)}.
       <div><button class="todaylink" style="color:inherit;text-decoration:underline" data-act="golifts">Log lifts →</button></div></div>`;
   }
 
@@ -364,7 +370,7 @@ function spark(ws) {
 }
 
 function liftChart(list) {
-  const W = 320, H = 130, L = 30, R = 10, T = 10, B = 22;
+  const W = 320, H = 140, L = 30, R = 12, T = 10, B = 32;
   const vals = []; list.forEach((x) => LIFTS.forEach((lf) => { if (typeof x[lf.k] === "number") vals.push(x[lf.k]); }));
   let mn = Math.min(...vals), mx = Math.max(...vals);
   const pad = Math.max(5, (mx - mn) * 0.15); mn = Math.max(0, mn - pad); mx += pad;
@@ -375,7 +381,10 @@ function liftChart(list) {
     s += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
       <text x="${L - 4}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${Math.round(v)}</text>`;
   });
-  for (let n = 1; n <= TOTAL_Q; n++) s += `<text x="${X(n).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">Q${n}</text>`;
+  for (let n = 1; n <= TOTAL_Q; n++) {
+    s += `<text x="${X(n).toFixed(1)}" y="${H - 17}" text-anchor="middle" font-size="9" fill="var(--muted)">Q${qNum(n)}</text>`;
+    if (n === 1 || qNum(n) === 1) s += `<text x="${X(n).toFixed(1)}" y="${H - 5}" text-anchor="middle" font-size="9" font-weight="600" fill="var(--muted)">${qYear(n)}</text>`;
+  }
   LIFTS.forEach((lf) => {
     const pts = list.filter((x) => typeof x[lf.k] === "number").map((x) => [X(x.n), Y(x[lf.k])]);
     if (pts.length > 1) s += `<polyline points="${pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")}" fill="none" stroke="${lf.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
@@ -389,12 +398,12 @@ function liftsCardHtml() {
   if (liftQ == null || liftQ > curQ) liftQ = curQ;
   const cur = state.lifts["q" + liftQ] || {};
   let h = `<h2 id="lifts">Gym lifts · quarterly</h2><div class="card">
-    <div class="muted">Once a quarter, log your best working set for each lift (kg). Q1 is your baseline.</div>
+    <div class="muted">Once a quarter, log your best working set for each lift (kg). ${qName(1)} is your baseline.</div>
     <form id="lform" class="stack" style="margin-top:10px">
       <select id="liftq" aria-label="Quarter">${Array.from({ length: curQ }, (_, i) => i + 1).reverse()
         .map((n) => `<option value="${n}" ${n === liftQ ? "selected" : ""}>${qLabel(n)}${state.lifts["q" + n] ? " ✓" : ""}</option>`).join("")}</select>
       <div class="lgrid">${LIFTS.map((lf) => `<label><span>${lf.name}</span><input id="lift_${lf.k}" type="number" inputmode="decimal" step="0.5" min="1" max="499" placeholder="kg" value="${cur[lf.k] != null ? cur[lf.k] : ""}"></label>`).join("")}</div>
-      <button class="btn wide" type="submit">${Object.keys(cur).length ? "Update Q" + liftQ : "Save Q" + liftQ}</button>
+      <button class="btn wide" type="submit">${(Object.keys(cur).length ? "Update " : "Save ") + qName(liftQ)}</button>
       <div class="muted">${esc(lMsg)}</div></form>`;
   const list = liftList();
   if (list.length) {
@@ -403,7 +412,7 @@ function liftsCardHtml() {
     const ch = LIFTS.map((lf) => liftChange(lf.k));
     if (ch.some(Boolean)) h += `<tr class="chg"><td>Change</td>${ch.map((c) => `<td>${c ? `<b class="${c.pct >= 0 ? "up" : "down"}">${pctTxt(c.pct)}</b>` : "–"}</td>`).join("")}</tr>`;
     h += `</table>`;
-    if (list.length === 1) h += `<p class="muted" style="margin:8px 0 0">Baseline saved. Log again in Q2 (from ${fmt(qStart(2), true)}) to see your progress.</p>`;
+    if (list.length === 1) h += `<p class="muted" style="margin:8px 0 0">Baseline saved. Log again in ${qName(2)} (from ${fmt(qStart(2), true)}) to see your progress.</p>`;
   }
   return h + `</div>`;
 }
@@ -421,7 +430,7 @@ function viewGoals() {
     if (m.kg) pr = lw ? `Latest weight: ${lw.kg} kg → target ${m.kg} kg` : "Log your weight below to track this";
     if (m.lifts) {
       const avg = liftAvgChange();
-      pr += `<br>${avg != null ? `Lifts vs your Q1 baseline: ${pctTxt(avg)} on average` : "Log your quarterly lifts below to track gym progress"}`;
+      pr += `<br>${avg != null ? `Lifts vs your ${qName(1)} baseline: ${pctTxt(avg)} on average` : "Log your quarterly lifts below to track gym progress"}`;
     }
     const days = Math.round((m.date - t) / 864e5);
     h += `<div class="${cls}"><div class="dot"></div><div style="flex:1"><div class="row between"><b>${m.name}</b><span class="d">${fmt(m.date, true)}${days > 0 ? " · in " + days + " d" : ""}</span></div>
@@ -643,8 +652,8 @@ document.addEventListener("submit", async (e) => {
     const q = "q" + liftQ;
     if (!Object.keys(rec).length) {
       if (!state.lifts[q]) { lMsg = "Enter at least one lift."; return render(); }
-      delete state.lifts[q]; lMsg = "Q" + liftQ + " entry removed.";
-    } else { state.lifts[q] = rec; lMsg = "Q" + liftQ + " lifts saved."; }
+      delete state.lifts[q]; lMsg = qName(liftQ) + " entry removed.";
+    } else { state.lifts[q] = rec; lMsg = qName(liftQ) + " lifts saved."; }
     clean(...LIFTS.map((lf) => "lift_" + lf.k)); render();
     sync.setLift(q, Object.keys(rec).length ? rec : null).catch((err) => showStatus("error", err.code));
   }
