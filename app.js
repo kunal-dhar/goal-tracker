@@ -11,12 +11,24 @@ const HABITS = [
 const MILESTONES = [
   { name: "Week 4", date: new Date(2026, 11, 5), target: "3 wins out of 4 weeks: past my old 3-week breaking point", cel: "Lunch/dinner with family", wins: 3 },
   { name: "Month 3", date: new Date(2027, 1, 13), target: "10 wins out of 12 weeks; waking at 5 feels normal", cel: "Weekend trip with family", wins: 10 },
-  { name: "Month 6", date: new Date(2027, 4, 15), target: "About 70 kg; gym weights clearly up; career moves underway", cel: "Recliner sofa-set", kg: 70 },
+  { name: "Month 6", date: new Date(2027, 4, 15), target: "About 70 kg; gym weights clearly up; career moves underway", cel: "Recliner sofa-set", kg: 70, lifts: true },
   { name: "Year 1", date: new Date(2027, 10, 13), target: "Senior Manager/Director role; about 72 kg", cel: "Foreign trip with family", kg: 72 },
   { name: "Finish", date: new Date(2028, 9, 14), target: "74 kg, and the routine runs without thinking", cel: "A new bike", kg: 74 }
 ];
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const REASONS = [
+  { k: "work", label: "Late work" }, { k: "travel", label: "Travel" }, { k: "ill", label: "Unwell" },
+  { k: "family", label: "Family" }, { k: "energy", label: "Low energy" }, { k: "sleep", label: "Poor sleep" },
+  { k: "social", label: "Social plans" }, { k: "other", label: "Other" }
+];
+const reasonLabel = (k) => (REASONS.find((x) => x.k === k) || { label: k }).label;
+const LIFTS = [
+  { k: "squat", name: "Squat", color: "var(--accent)" },
+  { k: "bench", name: "Bench", color: "var(--floor)" },
+  { k: "deadlift", name: "Deadlift", color: "var(--gold)" }
+];
+const TOTAL_Q = 8; // plan quarters, 3 months each from the start date
 
 /* ---------- date helpers ---------- */
 const d0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -31,9 +43,16 @@ const clampPlan = (d) => (d < START ? START : d > END ? END : d);
 const weekOf = (d) => Math.floor(Math.round((d0(d) - WEEK1_SUN) / 864e5) / 7) + 1;
 const weekSun = (n) => addDays(WEEK1_SUN, (n - 1) * 7);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// Plan quarters: Q1 = 11 Nov 2026 – 10 Feb 2027, Q2 = 11 Feb – 10 May 2027, … Q8 ends with the plan.
+const qStart = (n) => new Date(START.getFullYear(), START.getMonth() + 3 * (n - 1), START.getDate());
+const qEnd = (n) => (n >= TOTAL_Q ? END : addDays(qStart(n + 1), -1));
+const quarterOf = (d) => { for (let n = TOTAL_Q; n > 1; n--) if (d0(d) >= qStart(n)) return n; return 1; };
+const qLabel = (n) => "Q" + n + " · " + fmt(qStart(n)) + " – " + fmt(qEnd(n), true);
+const qShort = (n) => "Q" + n + " · " + MON[qStart(n).getMonth()] + " ’" + String(qStart(n).getFullYear()).slice(2);
 
 /* ---------- state ---------- */
-let state = { days: {}, weights: {} };
+let state = { days: {}, weights: {}, lifts: {} };
+let liftsLoaded = false, liftQ = null, wMsg = "", lMsg = "";
 let sync = null, user = null, authReady = false, configMissing = false, loadError = "";
 let tab = ["today", "weeks", "goals"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "today";
 let sel = clampPlan(today());
@@ -185,6 +204,20 @@ function streak() {
 }
 const weightList = () => Object.keys(state.weights).sort().map((d) => ({ d, kg: state.weights[d] }));
 const latestWeight = () => { const l = weightList(); return l.length ? l[l.length - 1] : null; };
+const liftList = () => Object.keys(state.lifts).map((q) => ({ n: +q.slice(1), ...state.lifts[q] }))
+  .filter((x) => x.n >= 1 && x.n <= TOTAL_Q).sort((a, b) => a.n - b.n);
+// First and latest logged value of one lift, and the % change between them.
+function liftChange(k) {
+  const l = liftList().filter((x) => typeof x[k] === "number");
+  if (l.length < 2) return null;
+  const a = l[0], b = l[l.length - 1];
+  return { from: a[k], to: b[k], pct: (b[k] - a[k]) / a[k] * 100 };
+}
+function liftAvgChange() {
+  const c = LIFTS.map((x) => liftChange(x.k)).filter(Boolean);
+  return c.length ? c.reduce((s, x) => s + x.pct, 0) / c.length : null;
+}
+const pctTxt = (p) => (p >= 0 ? "+" : "−") + Math.abs(Math.round(p)) + "%";
 
 /* ---------- sync status pill ---------- */
 let statusTimer = null;
@@ -231,7 +264,8 @@ function viewToday() {
 
   const y = addDays(sel, -1);
   if (editable && inPlan(y) && !dayCounts(key(y)) && !dayCounts(k)) {
-    h += `<div class="banner warn"><b>Never miss twice.</b> ${same(sel, t) ? "Yesterday" : "The day before"} didn't count. Today, at least hit your floor day: bed by 11, 15 min study, 15 min movement.</div>`;
+    h += `<div class="banner warn"><b>Never miss twice.</b> ${same(sel, t) ? "Yesterday" : "The day before"} didn't count. Today, at least hit your floor day: bed by 11, 15 min study, 15 min movement.
+      ${!dayRec(key(y)).r ? `<div><button class="todaylink" style="color:inherit;text-decoration:underline" data-act="prev">Note what got in the way →</button></div>` : ""}</div>`;
   } else if (editable && dayScore(k) === 3) {
     h += `<div class="banner good">All three done. That's a full day. ✓</div>`;
   }
@@ -242,6 +276,19 @@ function viewToday() {
   });
   h += `<button class="habit floor${r.f ? " on" : ""}" data-habit="f" ${editable ? "" : "disabled"}>
     <div class="ic">🛟</div><div class="t"><b>Floor day</b><span>Rough day? Bed by 11 · 15 min study · 15 min movement. Keeps the chain alive.</span></div><div class="check">✓</div></button>`;
+
+  // "What got in the way?": shown for floor days, for past days that weren't full, or if a reason is already saved.
+  if (editable && dayScore(k) < 3 && (r.f || sel < t || r.r || r.n)) {
+    h += `<div class="card obst"><div><b>What got in the way?</b> <span class="muted">${r.f ? "Floor day ticked." : sel < t ? "This day wasn't a full one." : ""}</span></div>
+      <div class="chips">${REASONS.map((x) => `<button class="chip${r.r === x.k ? " on" : ""}" data-reason="${x.k}">${x.label}</button>`).join("")}</div>
+      <input id="note" type="text" maxlength="120" placeholder="Add a note (optional)" value="${esc(r.n || "")}" enterkeyhint="done"></div>`;
+  }
+
+  if (liftsLoaded && t >= START && !state.lifts["q" + quarterOf(t)]) {
+    const qn = quarterOf(t);
+    h += `<div class="banner info">🏋️ <b>${qn === 1 ? "Set your gym baseline." : "New quarter: time to log your lifts."}</b> Record your squat, bench and deadlift for Q${qn}.
+      <div><button class="todaylink" style="color:inherit;text-decoration:underline" data-act="golifts">Log lifts →</button></div></div>`;
+  }
 
   const pct = wi.possible ? Math.min(100, wi.score / wi.possible * 100) : 0;
   const markPct = wi.possible ? wi.need / wi.possible * 100 : 0;
@@ -259,9 +306,34 @@ function viewToday() {
   return h;
 }
 
+// Summary of what got in the way over the last 90 days.
+function obstaclesHtml() {
+  const from = key(addDays(today(), -89)), counts = {}, notes = [];
+  Object.keys(state.days).filter((k) => k >= from).sort().forEach((k) => {
+    const r = state.days[k];
+    if (r.r) counts[r.r] = (counts[r.r] || 0) + 1;
+    if (r.n) notes.push({ k, r: r.r, n: r.n });
+  });
+  const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  if (!top.length && !notes.length) return "";
+  const max = top.length ? counts[top[0]] : 1;
+  let h = `<div class="card"><div class="row between"><b>What got in the way</b><span class="muted">last 90 days</span></div>`;
+  top.slice(0, 4).forEach((x) => {
+    h += `<div class="obrow"><span>${esc(reasonLabel(x))}</span><div class="bar"><i style="width:${counts[x] / max * 100}%;background:var(--warn)"></i></div><b>${counts[x]}</b></div>`;
+  });
+  if (notes.length) {
+    h += `<div class="muted" style="margin-top:10px">Latest notes</div>`;
+    notes.slice(-3).reverse().forEach((x) => {
+      h += `<button class="note" data-go="${x.k}"><span class="muted">${fmt(parseKey(x.k))}${x.r ? " · " + esc(reasonLabel(x.r)) : ""}</span><br>${esc(x.n)}</button>`;
+    });
+  }
+  return h + `</div>`;
+}
+
 function viewWeeks() {
   const t = today(), cur = weekOf(clampPlan(t)), aw = allWins();
   let h = `<h1>All weeks</h1><p class="sub">${aw.w} ★ out of ${aw.c} finished weeks · 15+/21 = success week</p>
+    ${obstaclesHtml()}
     <div class="card" style="padding:12px 10px">
     <div class="dayhead"><div></div><div class="cells">${DOW.map((d) => `<div>${d[0]}</div>`).join("")}</div><div style="text-align:right">Win?</div></div>`;
   for (let n = 1; n <= TOTAL_WEEKS; n++) {
@@ -291,6 +363,51 @@ function spark(ws) {
   </svg>`;
 }
 
+function liftChart(list) {
+  const W = 320, H = 130, L = 30, R = 10, T = 10, B = 22;
+  const vals = []; list.forEach((x) => LIFTS.forEach((lf) => { if (typeof x[lf.k] === "number") vals.push(x[lf.k]); }));
+  let mn = Math.min(...vals), mx = Math.max(...vals);
+  const pad = Math.max(5, (mx - mn) * 0.15); mn = Math.max(0, mn - pad); mx += pad;
+  const X = (n) => L + (n - 1) / (TOTAL_Q - 1) * (W - L - R);
+  const Y = (v) => T + (1 - (v - mn) / (mx - mn)) * (H - T - B);
+  let s = `<svg class="lchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Lift progress by quarter">`;
+  [mn, (mn + mx) / 2, mx].forEach((v) => {
+    s += `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
+      <text x="${L - 4}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${Math.round(v)}</text>`;
+  });
+  for (let n = 1; n <= TOTAL_Q; n++) s += `<text x="${X(n).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">Q${n}</text>`;
+  LIFTS.forEach((lf) => {
+    const pts = list.filter((x) => typeof x[lf.k] === "number").map((x) => [X(x.n), Y(x[lf.k])]);
+    if (pts.length > 1) s += `<polyline points="${pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")}" fill="none" stroke="${lf.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+    pts.forEach((p) => { s += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="${lf.color}"/>`; });
+  });
+  return s + `</svg><div class="legend">${LIFTS.map((lf) => `<span><i style="background:${lf.color}"></i>${lf.name}</span>`).join("")}</div>`;
+}
+
+function liftsCardHtml() {
+  const t = today(), curQ = quarterOf(clampPlan(t));
+  if (liftQ == null || liftQ > curQ) liftQ = curQ;
+  const cur = state.lifts["q" + liftQ] || {};
+  let h = `<h2 id="lifts">Gym lifts · quarterly</h2><div class="card">
+    <div class="muted">Once a quarter, log your best working set for each lift (kg). Q1 is your baseline.</div>
+    <form id="lform" class="stack" style="margin-top:10px">
+      <select id="liftq" aria-label="Quarter">${Array.from({ length: curQ }, (_, i) => i + 1).reverse()
+        .map((n) => `<option value="${n}" ${n === liftQ ? "selected" : ""}>${qLabel(n)}${state.lifts["q" + n] ? " ✓" : ""}</option>`).join("")}</select>
+      <div class="lgrid">${LIFTS.map((lf) => `<label><span>${lf.name}</span><input id="lift_${lf.k}" type="number" inputmode="decimal" step="0.5" min="1" max="499" placeholder="kg" value="${cur[lf.k] != null ? cur[lf.k] : ""}"></label>`).join("")}</div>
+      <button class="btn wide" type="submit">${Object.keys(cur).length ? "Update Q" + liftQ : "Save Q" + liftQ}</button>
+      <div class="muted">${esc(lMsg)}</div></form>`;
+  const list = liftList();
+  if (list.length) {
+    h += liftChart(list) + `<table class="lt"><tr><th></th>${LIFTS.map((lf) => `<th>${lf.name}</th>`).join("")}</tr>`;
+    list.forEach((x) => { h += `<tr><td>${qShort(x.n)}</td>${LIFTS.map((lf) => `<td>${x[lf.k] != null ? x[lf.k] : "–"}</td>`).join("")}</tr>`; });
+    const ch = LIFTS.map((lf) => liftChange(lf.k));
+    if (ch.some(Boolean)) h += `<tr class="chg"><td>Change</td>${ch.map((c) => `<td>${c ? `<b class="${c.pct >= 0 ? "up" : "down"}">${pctTxt(c.pct)}</b>` : "–"}</td>`).join("")}</tr>`;
+    h += `</table>`;
+    if (list.length === 1) h += `<p class="muted" style="margin:8px 0 0">Baseline saved. Log again in Q2 (from ${fmt(qStart(2), true)}) to see your progress.</p>`;
+  }
+  return h + `</div>`;
+}
+
 function viewGoals() {
   const t = today(), lw = latestWeight();
   let nextFound = false;
@@ -302,12 +419,18 @@ function viewGoals() {
     let pr = "";
     if (m.wins) pr = `★ weeks by this date: ${winsThrough(m.date)} / ${m.wins} needed`;
     if (m.kg) pr = lw ? `Latest weight: ${lw.kg} kg → target ${m.kg} kg` : "Log your weight below to track this";
+    if (m.lifts) {
+      const avg = liftAvgChange();
+      pr += `<br>${avg != null ? `Lifts vs your Q1 baseline: ${pctTxt(avg)} on average` : "Log your quarterly lifts below to track gym progress"}`;
+    }
     const days = Math.round((m.date - t) / 864e5);
     h += `<div class="${cls}"><div class="dot"></div><div style="flex:1"><div class="row between"><b>${m.name}</b><span class="d">${fmt(m.date, true)}${days > 0 ? " · in " + days + " d" : ""}</span></div>
       <div class="tg">${esc(m.target)}</div><div class="cel">🎉 ${esc(m.cel)}</div><div class="pr">${pr}</div></div></div>`;
   });
   h += `</div><h2>Weight</h2><div class="card">
-    <form id="wform" class="row"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="200" placeholder="Today’s weight (kg)"><button class="btn" type="submit">Log</button></form>`;
+    <form id="wform" class="wform"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="200" placeholder="Weight (kg)">
+      <input id="kgdate" type="date" value="${key(t)}" max="${key(t)}" aria-label="Date of weigh-in"><button class="btn" type="submit">Log</button></form>
+    ${wMsg ? `<div class="muted" style="margin-top:6px">${esc(wMsg)}</div>` : ""}`;
   const ws = weightList();
   if (ws.length) {
     h += spark(ws) + `<div style="margin-top:8px">`;
@@ -317,7 +440,7 @@ function viewGoals() {
     });
     h += `</div>`;
   } else h += `<p class="muted" style="margin:10px 0 0">Targets: ~70 kg by May ’27, ~72 kg by Nov ’27, 74 kg at the finish.</p>`;
-  h += `</div>
+  h += `</div>` + liftsCardHtml() + `
     <h2>The rules</h2><div class="card"><ul class="rules">
       <li><b>Each day:</b> lights out by 10 · studied 3 hrs+ · gym/workout</li>
       <li><b>15+ / 21</b> ticks in a week = success week ★</li>
@@ -353,8 +476,11 @@ function viewSetup() {
 
 function render() {
   const root = document.getElementById("root");
-  const kgEl = document.getElementById("kg"), kgVal = kgEl ? kgEl.value : "";
-  const emailEl = document.getElementById("email"), emailVal = emailEl ? emailEl.value : "";
+  // Keep anything half-typed (and the cursor) when the screen redraws, e.g. after a sync update.
+  const keep = {};
+  root.querySelectorAll("input[data-dirty], select[data-dirty]").forEach((el) => { if (el.id) keep[el.id] = el.value; });
+  const ae = document.activeElement, focusId = ae && ae !== document.body && root.contains(ae) && ae.id ? ae.id : null;
+  let caret = null; try { if (focusId && ae.selectionStart != null) caret = [ae.selectionStart, ae.selectionEnd]; } catch (_) {}
   let h;
   if (configMissing) h = viewSetup();
   else if (loadError) h = `<div class="center"><h1>Can't load</h1><div class="card">${esc(loadError)}<p class="muted">Check your internet connection and reload. After the first successful load the app also works offline.</p></div></div>`;
@@ -367,11 +493,35 @@ function render() {
       .map((x) => `<button class="tab${tab === x[0] ? " on" : ""}" data-tab="${x[0]}"><span class="ti">${x[1]}</span>${x[2]}</button>`).join("")}</div></nav>`;
   }
   root.innerHTML = h;
-  const k2 = document.getElementById("kg"); if (k2 && kgVal) k2.value = kgVal;
-  const e2 = document.getElementById("email"); if (e2 && emailVal) e2.value = emailVal;
+  Object.keys(keep).forEach((id) => { const el = document.getElementById(id); if (el) { el.value = keep[id]; el.dataset.dirty = "1"; } });
+  if (focusId) {
+    const el = document.getElementById(focusId);
+    if (el) { try { el.focus({ preventScroll: true }); if (caret) el.setSelectionRange(caret[0], caret[1]); } catch (_) {} }
+  }
+}
+document.addEventListener("input", (e) => { if (e.target.id && e.target.matches("input,select")) e.target.dataset.dirty = "1"; });
+const clean = (...ids) => ids.forEach((id) => { const el = document.getElementById(id); if (el) delete el.dataset.dirty; });
+
+/* ---------- day record writes ---------- */
+function saveDay(k, r) {
+  Object.keys(r).forEach((x) => { if (!r[x]) delete r[x]; });
+  const rec = Object.keys(r).length ? r : null;
+  if (rec) state.days[k] = rec; else delete state.days[k];
+  sync.setDay(k, rec).catch((err) => showStatus("error", err.code));
+}
+// Saves the note box (if it was changed) for the day currently on screen.
+function saveNote() {
+  const el = document.getElementById("note");
+  if (!el || !el.dataset.dirty) return;
+  const k = key(sel), r = { ...dayRec(k) }, v = el.value.trim().slice(0, 120);
+  delete el.dataset.dirty;
+  if ((r.n || "") === v) return;
+  r.n = v; saveDay(k, r);
 }
 
 function goTab(name) {
+  saveNote();
+  if (name !== tab) { wMsg = ""; lMsg = ""; }
   tab = name;
   try { history.replaceState(null, "", "#" + tab); } catch (_) {}
   render(); window.scrollTo(0, 0);
@@ -395,14 +545,21 @@ document.addEventListener("click", async (e) => {
   if (!b) { if (e.target.closest("[data-lockscreen]")) unlock(false); return; }
   if (b.dataset.tab) return goTab(b.dataset.tab);
   const act = b.dataset.act;
-  if (act === "prev") { sel = clampPlan(addDays(sel, -1)); return render(); }
-  if (act === "next") { sel = clampPlan(addDays(sel, 1)); return render(); }
-  if (act === "today") { sel = clampPlan(today()); return render(); }
+  if (act === "prev" || act === "next" || act === "today") {
+    saveNote(); clean("note");
+    sel = act === "today" ? clampPlan(today()) : clampPlan(addDays(sel, act === "prev" ? -1 : 1));
+    render(); window.scrollTo(0, 0); return;
+  }
+  if (act === "golifts") {
+    liftQ = quarterOf(clampPlan(today())); goTab("goals");
+    const el = document.getElementById("lifts"); if (el) el.scrollIntoView({ block: "start" });
+    return;
+  }
   if (act === "signout") {
     // Signing out removes the lock on this device; getting back in needs the account password.
     try { localStorage.removeItem(LOCK_KEY); } catch (_) {}
     locked = false; lockMsg = "";
-    await sync.logOut(); state = { days: {}, weights: {} }; return;
+    await sync.logOut(); state = { days: {}, weights: {}, lifts: {} }; liftsLoaded = false; return;
   }
   if (act === "unlock") return unlock(false);
   if (act === "lockon") return enableLock();
@@ -416,7 +573,7 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if (act === "export") {
-    const data = JSON.stringify({ app: "goal-tracker", exported: new Date().toISOString(), days: state.days, weights: state.weights }, null, 2);
+    const data = JSON.stringify({ app: "goal-tracker", exported: new Date().toISOString(), days: state.days, weights: state.weights, lifts: state.lifts }, null, 2);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));
     a.download = "goal-tracker-backup-" + key(today()) + ".json";
@@ -426,17 +583,23 @@ document.addEventListener("click", async (e) => {
   }
   if (b.dataset.go) {
     const d = parseKey(b.dataset.go); if (d > today()) return;
+    saveNote(); clean("note");
     sel = clampPlan(d); return goTab("today");
   }
   if (b.dataset.habit) {
     if (sel > today() || today() < START) return;
+    saveNote();
     const k = key(sel), r = { ...dayRec(k) };
     r[b.dataset.habit] = r[b.dataset.habit] ? 0 : 1;
-    Object.keys(r).forEach((x) => { if (!r[x]) delete r[x]; });
-    const rec = Object.keys(r).length ? r : null;
-    if (rec) state.days[k] = rec; else delete state.days[k];
-    render();
-    sync.setDay(k, rec).catch((err) => showStatus("error", err.code));
+    saveDay(k, r); render();
+    return;
+  }
+  if (b.dataset.reason) {
+    if (sel > today() || today() < START) return;
+    saveNote();
+    const k = key(sel), r = { ...dayRec(k) };
+    r.r = r.r === b.dataset.reason ? "" : b.dataset.reason; // tap again to clear
+    saveDay(k, r); render();
     return;
   }
   if (b.dataset.delw) {
@@ -458,14 +621,47 @@ document.addEventListener("submit", async (e) => {
   }
   if (e.target.id === "wform") {
     const v = parseFloat(document.getElementById("kg").value);
-    if (!(v >= 30 && v <= 200)) return;
-    const k = key(today()), kg = Math.round(v * 10) / 10;
-    state.weights[k] = kg; document.getElementById("kg").value = ""; render();
-    sync.setWeight(k, kg).catch((err) => showStatus("error", err.code));
+    if (!(v >= 30 && v <= 200)) { wMsg = "Enter a weight between 30 and 200 kg."; return render(); }
+    const dv = document.getElementById("kgdate").value || key(today());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dv) || parseKey(dv) > today()) { wMsg = "Pick today or an earlier date."; return render(); }
+    const kg = Math.round(v * 10) / 10, existed = state.weights[dv] != null;
+    state.weights[dv] = kg;
+    wMsg = (existed ? "Updated " : "Saved ") + kg + " kg for " + (dv === key(today()) ? "today" : fmt(parseKey(dv), true)) + ".";
+    clean("kg", "kgdate"); document.getElementById("kg").value = ""; render();
+    sync.setWeight(dv, kg).catch((err) => showStatus("error", err.code));
+    return;
+  }
+  if (e.target.id === "lform") {
+    const rec = {}; let bad = false;
+    LIFTS.forEach((lf) => {
+      const raw = document.getElementById("lift_" + lf.k).value.trim();
+      if (!raw) return;
+      const v = parseFloat(raw);
+      if (!(v > 0 && v < 500)) bad = true; else rec[lf.k] = Math.round(v * 2) / 2;
+    });
+    if (bad) { lMsg = "Each lift must be between 1 and 499 kg."; return render(); }
+    const q = "q" + liftQ;
+    if (!Object.keys(rec).length) {
+      if (!state.lifts[q]) { lMsg = "Enter at least one lift."; return render(); }
+      delete state.lifts[q]; lMsg = "Q" + liftQ + " entry removed.";
+    } else { state.lifts[q] = rec; lMsg = "Q" + liftQ + " lifts saved."; }
+    clean(...LIFTS.map((lf) => "lift_" + lf.k)); render();
+    sync.setLift(q, Object.keys(rec).length ? rec : null).catch((err) => showStatus("error", err.code));
   }
 });
 
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "note") { e.preventDefault(); e.target.blur(); }
+});
+
 document.addEventListener("change", async (e) => {
+  if (e.target.id === "note") { saveNote(); return; }
+  if (e.target.id === "liftq") {
+    saveNote();
+    liftQ = +e.target.value; lMsg = "";
+    clean("liftq", ...LIFTS.map((lf) => "lift_" + lf.k)); render();
+    return;
+  }
   if (e.target.id !== "importFile") return;
   const f = e.target.files && e.target.files[0]; if (!f) return;
   try {
@@ -475,10 +671,19 @@ document.addEventListener("change", async (e) => {
     const days = {};
     Object.keys(data.days || {}).forEach((k) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
-      const r = {}; ["l", "s", "g", "f"].forEach((x) => { if (data.days[k][x]) r[x] = 1; });
+      const src = data.days[k] || {}, r = {};
+      ["l", "s", "g", "f"].forEach((x) => { if (src[x]) r[x] = 1; });
+      if (typeof src.r === "string" && src.r) r.r = src.r.slice(0, 20);
+      if (typeof src.n === "string" && src.n) r.n = src.n.slice(0, 200);
       if (Object.keys(r).length) days[k] = r;
     });
-    const n = await sync.importAll(days, weights);
+    const lifts = {};
+    Object.keys(data.lifts || {}).forEach((q) => {
+      if (!/^q\d{1,2}$/.test(q)) return;
+      const r = {}; ["squat", "bench", "deadlift"].forEach((x) => { const v = data.lifts[q][x]; if (typeof v === "number" && v > 0 && v < 500) r[x] = v; });
+      if (Object.keys(r).length) lifts[q] = r;
+    });
+    const n = await sync.importAll(days, weights, lifts);
     acctMsg(`Imported ${n} entries.`);
   } catch (err) { acctMsg("That file couldn't be imported."); }
   e.target.value = "";
@@ -517,8 +722,9 @@ async function boot() {
       sync.subscribe(u.uid,
         (days) => { state.days = days; render(); },
         (weights) => { state.weights = weights; render(); },
-        showStatus);
-    } else { sync.unsubscribe(); state = { days: {}, weights: {} }; }
+        showStatus,
+        (lifts) => { state.lifts = lifts; liftsLoaded = true; render(); });
+    } else { sync.unsubscribe(); state = { days: {}, weights: {}, lifts: {} }; liftsLoaded = false; }
     render();
     if (u && locked && lockCred()) autoUnlock(); // show the Face ID / Touch ID prompt straight away
   });

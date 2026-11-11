@@ -6,12 +6,25 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    // One document per day: users/{uid}/days/2026-11-11 -> { l, s, g, f }
+    // Optional text field: absent, or a string no longer than max characters.
+    function okText(d, k, max) {
+      return !(k in d) || (d[k] is string && d[k].size() <= max);
+    }
+
+    // Optional lift weight in kg: absent, or a number between 0 and 500.
+    function okLift(d, k) {
+      return !(k in d) || (d[k] is number && d[k] > 0 && d[k] < 500);
+    }
+
+    // One document per day: users/{uid}/days/2026-11-11 -> { l, s, g, f, r, n }
+    // r = what got in the way (a short reason code), n = optional note
     match /users/{uid}/days/{day} {
       allow read, delete: if isOwner(uid);
       allow create, update: if isOwner(uid)
         && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-        && request.resource.data.keys().hasOnly(['l', 's', 'g', 'f', 'updatedAt']);
+        && request.resource.data.keys().hasOnly(['l', 's', 'g', 'f', 'r', 'n', 'updatedAt'])
+        && okText(request.resource.data, 'r', 20)
+        && okText(request.resource.data, 'n', 200);
     }
 
     // One document per weigh-in: users/{uid}/weights/2026-11-11 -> { kg }
@@ -22,6 +35,17 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['kg', 'updatedAt'])
         && request.resource.data.kg is number
         && request.resource.data.kg > 20 && request.resource.data.kg < 300;
+    }
+
+    // One document per plan quarter: users/{uid}/lifts/q1 -> { squat, bench, deadlift }
+    match /users/{uid}/lifts/{q} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && q.matches('^q[0-9]{1,2}$')
+        && request.resource.data.keys().hasOnly(['squat', 'bench', 'deadlift', 'updatedAt'])
+        && okLift(request.resource.data, 'squat')
+        && okLift(request.resource.data, 'bench')
+        && okLift(request.resource.data, 'deadlift');
     }
 
     // Everything else is closed.

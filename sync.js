@@ -29,12 +29,12 @@ export const resetPassword = (email) => sendPasswordResetEmail(auth, email);
 
 export function unsubscribe() { unsubs.forEach((u) => u()); unsubs = []; uid = null; }
 
-export function subscribe(userId, onDays, onWeights, onStatus) {
+export function subscribe(userId, onDays, onWeights, onStatus, onLifts) {
   unsubscribe();
   uid = userId;
-  const meta = { days: null, weights: null };
+  const meta = { days: null, weights: null, lifts: null };
   const report = () => {
-    const m = [meta.days, meta.weights].filter(Boolean);
+    const m = [meta.days, meta.weights, meta.lifts].filter(Boolean);
     if (!m.length) return;
     const pending = m.some((x) => x.hasPendingWrites);
     const cache = m.some((x) => x.fromCache);
@@ -50,6 +50,9 @@ export function subscribe(userId, onDays, onWeights, onStatus) {
     snap.forEach((d) => {
       const x = d.data(), r = {};
       ["l", "s", "g", "f"].forEach((k) => { if (x[k]) r[k] = 1; });
+      // r = reason that got in the way, n = optional note
+      if (typeof x.r === "string" && x.r) r.r = x.r;
+      if (typeof x.n === "string" && x.n) r.n = x.n;
       if (Object.keys(r).length) out[d.id] = r;
     });
     meta.days = snap.metadata; onDays(out); report();
@@ -60,6 +63,22 @@ export function subscribe(userId, onDays, onWeights, onStatus) {
     snap.forEach((d) => { const x = d.data(); if (typeof x.kg === "number") out[d.id] = x.kg; });
     meta.weights = snap.metadata; onWeights(out); report();
   }, onErr));
+
+  // One document per plan quarter: users/{uid}/lifts/q1 -> { squat, bench, deadlift } (kg)
+  unsubs.push(onSnapshot(collection(db, "users", uid, "lifts"), { includeMetadataChanges: true }, (snap) => {
+    const out = {};
+    snap.forEach((d) => {
+      const x = d.data(), r = {};
+      ["squat", "bench", "deadlift"].forEach((k) => { if (typeof x[k] === "number") r[k] = x[k]; });
+      if (Object.keys(r).length) out[d.id] = r;
+    });
+    meta.lifts = snap.metadata; if (onLifts) onLifts(out); report();
+  }, onErr));
+}
+
+export function setLift(q, rec) {
+  const ref = doc(db, "users", uid, "lifts", q);
+  return rec ? setDoc(ref, { ...rec, updatedAt: serverTimestamp() }) : deleteDoc(ref);
 }
 
 // Writes resolve when the server confirms; the UI updates instantly from the local cache.
@@ -73,10 +92,11 @@ export function setWeight(key, kg) {
   return kg == null ? deleteDoc(ref) : setDoc(ref, { kg, updatedAt: serverTimestamp() });
 }
 
-export async function importAll(days, weights) {
+export async function importAll(days, weights, lifts) {
   const ops = [];
   Object.keys(days || {}).forEach((k) => ops.push(["days", k, { ...days[k] }]));
   Object.keys(weights || {}).forEach((k) => ops.push(["weights", k, { kg: weights[k] }]));
+  Object.keys(lifts || {}).forEach((k) => ops.push(["lifts", k, { ...lifts[k] }]));
   for (let i = 0; i < ops.length; i += 400) {
     const batch = writeBatch(db);
     ops.slice(i, i + 400).forEach(([col, k, data]) =>
