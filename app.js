@@ -84,8 +84,8 @@ const qLabel = (n) => qName(n) + " · " + MON[calStart(n).getMonth()] + " – " 
 
 /* ---------- state ---------- */
 let state = { days: {}, weights: {}, lifts: {}, wakes: {} };
-let liftsLoaded = false, wakesLoaded = false, liftQ = null, wMsg = "", lMsg = "", wkMsg = "", wakeEdit = false;
-let delPending = null;
+let liftsLoaded = false, wakesLoaded = false, liftQ = null, wMsg = "", lMsg = "", wkMsg = "";
+let delPending = null, wakeW = null;
 const expOpen = {}; // which milestone cards have "Expected outcomes" open
 let sync = null, user = null, authReady = false, configMissing = false, loadError = "";
 let tab = ["today", "weeks", "goals", "logs"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "today";
@@ -339,7 +339,10 @@ function viewToday() {
       <div><button class="todaylink" style="color:inherit;text-decoration:underline" data-act="golifts">Log lifts →</button></div></div>`;
   }
 
-  if (t >= START) h += phaseCardHtml(ph) + wakeCardHtml(wi, ph);
+  const curW = weekOf(clampPlan(t));
+  if (wakesLoaded && same(sel, t) && t >= START && t.getDay() === 6 && wakeOf(curW) == null) {
+    h += `<div class="banner info">⏰ Last day of the week: log your usual wake-up time. <button class="todaylink" style="color:inherit;text-decoration:underline" data-act="gowake">Log it →</button></div>`;
+  }
 
   const pct = wi.possible ? Math.min(100, wi.score / wi.possible * 100) : 0;
   const markPct = wi.possible ? wi.need / wi.possible * 100 : 0;
@@ -355,36 +358,6 @@ function viewToday() {
     <div class="stat"><b>${streak()}</b><span>day streak</span></div>
     <div class="stat"><b>${aw.c ? Math.round(aw.w / aw.c * 100) + "%" : "–"}</b><span>win rate</span></div></div>`;
   return h;
-}
-
-// "This phase" card on the Today tab: the phase's one target, misses left and its reward.
-function phaseCardHtml(p) {
-  const st = phaseStats(p), pi = PHASES.indexOf(p), next = PHASES[pi + 1];
-  let line;
-  if (st.status === "earned") line = `<div class="ph-earned">🎉 Target hit: ${st.wins} of ${p.target} ★. Reward earned!</div>`;
-  else if (st.status === "missed") line = `<div class="ph-missed">This phase's target can't be reached any more, so its reward is gone. ${next ? `Fresh start on ${fmt(next.start)}: ${esc(next.name)}.` : ""}</div>`;
-  else line = `<div class="muted">★ ${st.wins} of ${p.target} · <b class="${st.left === 0 ? "warnt" : ""}">${st.left} ${st.left === 1 ? "miss" : "misses"} left</b> · ${st.toGo} ${st.toGo === 1 ? "week" : "weeks"} to go</div>`;
-  return `<div class="card phase"><div class="row between"><b>${esc(p.name)} phase</b><span class="muted">${fmt(p.start)} – ${fmt(p.end)}</span></div>
-    ${line}<div class="bar"><i style="width:${Math.min(100, st.wins / p.target * 100)}%;background:var(--gold)"></i></div>
-    <div class="ph-reward${st.status === "missed" ? " gone" : ""}">🎁 ${esc(p.reward)}</div></div>`;
-}
-
-// Weekly wake-up log (an expected outcome, not a target).
-function wakeCardHtml(wi, p) {
-  if (!wi.started || !wakesLoaded) return "";
-  const m = wakeOf(wi.n);
-  const label = wi.n === weekOf(clampPlan(today())) ? "this week" : "week " + wi.n;
-  if (m != null && !wakeEdit) {
-    const diff = m - p.wake;
-    const vs = diff === 0 ? "right on the expected time" : Math.abs(diff) + " min " + (diff > 0 ? "later" : "earlier") + " than expected";
-    return `<div class="card wakec row between"><div><b>⏰ Usual wake-up ${label}: ${amTxt(m)}</b><div class="muted">Expected ~${amTxt(p.wake)} · ${vs}</div></div>
-      <button class="todaylink" data-act="wakeedit">Edit</button></div>`;
-  }
-  return `<div class="card wakec"><div class="row between"><b>⏰ Wake-up ${label}</b><span class="muted">expected ~${amTxt(p.wake)}</span></div>
-    <div class="muted" style="margin-top:2px">Log it once a week. It's an outcome of your lights-out time, not a target.</div>
-    <form id="wkform" class="row" style="gap:8px;margin-top:10px"><input id="wake" type="time" step="300" value="${m != null ? toHHMM(m) : ""}" aria-label="Usual wake-up time">
-      <button class="btn" type="submit">${m != null ? "Update" : "Save"}</button></form>
-    ${wkMsg ? `<div class="err" style="margin-top:6px">${esc(wkMsg)}</div>` : ""}</div>`;
 }
 
 // Summary of what got in the way over the last 90 days.
@@ -502,8 +475,19 @@ function liftsCardHtml() {
 function wakeHistoryHtml() {
   const W = 320, H = 130, L = 34, R = 8, T = 10, B = 20;
   const logged = Object.keys(state.wakes).map((k) => ({ n: +k.slice(1), m: state.wakes[k] })).filter((x) => x.n >= 1 && x.n <= TOTAL_WEEKS).sort((a, b) => a.n - b.n);
-  let h = `<h2>Wake-up time · weekly</h2><div class="card">`;
-  if (!logged.length) return h + `<div class="muted">Log your usual wake-up time once a week from the Today tab. It shows here against the expected time for each phase.</div></div>`;
+  const t = today(), curW = t < START ? 1 : weekOf(clampPlan(t));
+  if (wakeW == null || wakeW > curW) wakeW = curW;
+  const p = phaseOf(weekSun(wakeW) < START ? START : weekSun(wakeW)), m = wakeOf(wakeW);
+  let h = `<h2 id="wakelog">Wake-up time · weekly</h2><div class="card">
+    <div class="muted">Once a week, log the time you usually woke up. It's an outcome of your lights-out time, not a target.</div>
+    <form id="wkform" class="stack" style="margin-top:10px">
+      <select id="wakew" aria-label="Week">${Array.from({ length: curW }, (_, i) => curW - i)
+        .map((n) => `<option value="${n}" ${n === wakeW ? "selected" : ""}>Week ${n} · from ${fmt(weekSun(n) < START ? START : weekSun(n))}${n === curW ? " (this week)" : ""}${wakeOf(n) != null ? " ✓" : ""}</option>`).join("")}</select>
+      <div class="row" style="gap:8px"><input id="wake" type="time" step="300" value="${m != null ? toHHMM(m) : ""}" aria-label="Usual wake-up time" style="flex:1">
+        <button class="btn" type="submit">${m != null ? "Update" : "Save"}</button></div>
+      <div class="muted">Expected this phase: ~${amTxt(p.wake)}${m != null ? ` · logged ${amTxt(m)} (${m === p.wake ? "on time" : Math.abs(m - p.wake) + " min " + (m > p.wake ? "later" : "earlier")})` : ""}</div>
+      ${wkMsg ? `<div class="err">${esc(wkMsg)}</div>` : ""}</form>`;
+  if (!logged.length) return h + `</div>`;
   const all = logged.map((x) => x.m).concat(PHASES.map((p) => p.wake));
   const mn = Math.min(...all) - 15, mx = Math.max(...all) + 15;
   const X = (n) => L + (n - 1) / (TOTAL_WEEKS - 1) * (W - L - R);
@@ -664,7 +648,7 @@ function saveNote() {
 
 function goTab(name) {
   saveNote();
-  if (name !== tab) { wMsg = ""; lMsg = ""; wkMsg = ""; wakeEdit = false; acctText = ""; delPending = null; }
+  if (name !== tab) { wMsg = ""; lMsg = ""; wkMsg = ""; acctText = ""; delPending = null; wakeW = null; }
   tab = name;
   try { history.replaceState(null, "", "#" + tab); } catch (_) {}
   render(); window.scrollTo(0, 0);
@@ -690,11 +674,11 @@ document.addEventListener("click", async (e) => {
   if (b.dataset.tab) return goTab(b.dataset.tab);
   const act = b.dataset.act;
   if (act === "prev" || act === "next" || act === "today") {
-    saveNote(); clean("note", "wake"); wakeEdit = false; wkMsg = "";
+    saveNote(); clean("note");
     sel = act === "today" ? clampPlan(today()) : clampPlan(addDays(sel, act === "prev" ? -1 : 1));
     render(); window.scrollTo(0, 0); return;
   }
-  if (act === "wakeedit") { wakeEdit = true; render(); const el = document.getElementById("wake"); if (el) el.focus(); return; }
+  if (act === "gowake") { goTab("logs"); const el = document.getElementById("wakelog"); if (el) el.scrollIntoView({ block: "start" }); return; }
   if (b.dataset.exp != null) {
     const i = +b.dataset.exp, curI = today() < START ? 0 : phaseIdx(clampPlan(today()));
     const open = expOpen[i] != null ? expOpen[i] : i === curI;
@@ -788,8 +772,8 @@ document.addEventListener("submit", async (e) => {
     const mt = /^(\d{1,2}):(\d{2})/.exec(v || "");
     const min = mt ? +mt[1] * 60 + +mt[2] : NaN;
     if (!(min >= 180 && min <= 600)) { wkMsg = "Enter a time between 3:00 and 10:00 am."; return render(); }
-    const n = weekOf(sel);
-    state.wakes["w" + n] = min; wkMsg = ""; wakeEdit = false;
+    const n = wakeW || weekOf(clampPlan(today()));
+    state.wakes["w" + n] = min; wkMsg = "";
     clean("wake"); render();
     sync.setWake("w" + n, min).catch((err) => showStatus("error", err.code));
     return;
@@ -819,6 +803,7 @@ document.addEventListener("keydown", (e) => {
 
 document.addEventListener("change", async (e) => {
   if (e.target.id === "note") { saveNote(); return; }
+  if (e.target.id === "wakew") { wakeW = +e.target.value; wkMsg = ""; clean("wakew", "wake"); render(); return; }
   if (e.target.id === "liftq") {
     saveNote();
     liftQ = +e.target.value; lMsg = "";
