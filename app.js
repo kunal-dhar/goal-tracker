@@ -476,14 +476,17 @@ function wakeHistoryHtml() {
   const W = 320, H = 130, L = 34, R = 8, T = 10, B = 20;
   const logged = Object.keys(state.wakes).map((k) => ({ n: +k.slice(1), m: state.wakes[k] })).filter((x) => x.n >= 1 && x.n <= TOTAL_WEEKS).sort((a, b) => a.n - b.n);
   const t = today(), curW = t < START ? 1 : weekOf(clampPlan(t));
-  if (wakeW == null || wakeW > curW) wakeW = curW;
-  const p = phaseOf(weekSun(wakeW) < START ? START : weekSun(wakeW)), m = wakeOf(wakeW);
+  wakeW = curW;
+  const wFrom = weekSun(curW) < START ? START : weekSun(curW), wTo = addDays(weekSun(curW), 6) > END ? END : addDays(weekSun(curW), 6);
+  const p = phaseOf(wFrom), m = wakeOf(curW), shown = m != null ? m : p.wake;
+  // 15-minute choices from 3:00 to 8:00 am (plus the logged time if it isn't on a quarter hour)
+  const opts = []; for (let x = 180; x <= 480; x += 15) opts.push(x);
+  if (!opts.includes(shown)) { opts.push(shown); opts.sort((a, b) => a - b); }
   let h = `<h2 id="wakelog">Wake-up time · weekly</h2><div class="card">
     <div class="muted">Once a week, log the time you usually woke up. It's an outcome of your lights-out time, not a target.</div>
     <form id="wkform" class="stack" style="margin-top:10px">
-      <select id="wakew" aria-label="Week">${Array.from({ length: curW }, (_, i) => curW - i)
-        .map((n) => `<option value="${n}" ${n === wakeW ? "selected" : ""}>Week ${n} · from ${fmt(weekSun(n) < START ? START : weekSun(n))}${n === curW ? " (this week)" : ""}${wakeOf(n) != null ? " ✓" : ""}</option>`).join("")}</select>
-      <div class="row" style="gap:8px"><input id="wake" type="time" step="300" value="${m != null ? toHHMM(m) : ""}" aria-label="Usual wake-up time" style="flex:1">
+      <div><b>Week ${curW}</b> <span class="muted">· ${fmt(wFrom)} – ${fmt(wTo, true)}</span>${m != null ? ` <span class="ok">✓ logged</span>` : ""}</div>
+      <div class="row" style="gap:8px"><select id="wake" aria-label="Usual wake-up time" style="flex:1">${opts.map((x) => `<option value="${x}" ${x === shown ? "selected" : ""}>${amTxt(x)}${x === p.wake ? " (expected)" : ""}</option>`).join("")}</select>
         <button class="btn" type="submit">${m != null ? "Update" : "Save"}</button></div>
       <div class="muted">Expected this phase: ~${amTxt(p.wake)}${m != null ? ` · logged ${amTxt(m)} (${m === p.wake ? "on time" : Math.abs(m - p.wake) + " min " + (m > p.wake ? "later" : "earlier")})` : ""}</div>
       ${wkMsg ? `<div class="err">${esc(wkMsg)}</div>` : ""}</form>`;
@@ -768,10 +771,8 @@ document.addEventListener("submit", async (e) => {
     return;
   }
   if (e.target.id === "wkform") {
-    const v = document.getElementById("wake").value;
-    const mt = /^(\d{1,2}):(\d{2})/.exec(v || "");
-    const min = mt ? +mt[1] * 60 + +mt[2] : NaN;
-    if (!(min >= 180 && min <= 600)) { wkMsg = "Enter a time between 3:00 and 10:00 am."; return render(); }
+    const min = +document.getElementById("wake").value;
+    if (!(min >= 180 && min <= 600)) { wkMsg = "Pick a time between 3:00 and 8:00 am."; return render(); }
     const n = wakeW || weekOf(clampPlan(today()));
     state.wakes["w" + n] = min; wkMsg = "";
     clean("wake"); render();
@@ -803,7 +804,6 @@ document.addEventListener("keydown", (e) => {
 
 document.addEventListener("change", async (e) => {
   if (e.target.id === "note") { saveNote(); return; }
-  if (e.target.id === "wakew") { wakeW = +e.target.value; wkMsg = ""; clean("wakew", "wake"); render(); return; }
   if (e.target.id === "liftq") {
     saveNote();
     liftQ = +e.target.value; lMsg = "";
