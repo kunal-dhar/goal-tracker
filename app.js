@@ -1,20 +1,37 @@
 import { firebaseConfig } from "./firebase-config.js";
 
-/* ---------- plan constants (from My Goal Tracker) ---------- */
-const START = new Date(2026, 10, 11), END = new Date(2028, 9, 14), WEEK1_SUN = new Date(2026, 10, 8);
-const TOTAL_WEEKS = 101;
+/* ---------- plan constants ----------
+   The master copy of the plan is plan/milestones.csv and plan/plan-rules.csv in this repository.
+   If you change the plan there, change PHASES below to match. */
+const START = new Date(2026, 10, 11), END = new Date(2028, 9, 7), WEEK1_SUN = new Date(2026, 10, 8);
+const CELEBRATION = new Date(2028, 9, 14); // 14 Oct 2028, birthday: grand celebration
+const TOTAL_WEEKS = 100;
 const HABITS = [
-  { k: "l", icon: "🌙", name: "Lights out by 10", hint: "In bed, lights off by 10 pm" },
+  { k: "l", icon: "🌙", name: "Lights out", hint: "In bed, lights off" },
   { k: "s", icon: "📚", name: "Studied 3 hrs+", hint: "Focused study time" },
   { k: "g", icon: "🏋️", name: "Gym / workout", hint: "Training session done" }
 ];
-const MILESTONES = [
-  { name: "Week 4", date: new Date(2026, 11, 5), target: "3 wins out of 4 weeks: past my old 3-week breaking point", cel: "Lunch/dinner with family", wins: 3 },
-  { name: "Month 3", date: new Date(2027, 1, 13), target: "10 wins out of 12 weeks; waking at 5 feels normal", cel: "Weekend trip with family", wins: 10 },
-  { name: "Month 6", date: new Date(2027, 4, 15), target: "About 70 kg; gym weights clearly up; career moves underway", cel: "Recliner sofa-set", kg: 70, lifts: true },
-  { name: "Year 1", date: new Date(2027, 10, 13), target: "Senior Manager/Director role; about 72 kg", cel: "Foreign trip with family", kg: 72 },
-  { name: "Finish", date: new Date(2028, 9, 14), target: "74 kg, and the routine runs without thinking", cel: "A new bike", kg: 74 }
-];
+// One phase per quarter. target = ★ weeks needed within the phase (the only target; it decides the reward).
+// lo = lights-out time (minutes after midnight), the daily habit for that phase.
+// kg, lift, wake, body, wakeTxt, career = expected outcomes: shown for monitoring, never pass/fail.
+const PHASES = [
+  { name: "Q4 2026", start: [2026, 10, 11], end: [2027, 0, 2], w: [1, 8], target: 6, lo: 22 * 60, wake: 5 * 60 + 30, kg: null, lift: null,
+    body: "Baseline logged; training 5x/week on a set program; ~2 g protein per kg daily", wakeTxt: "Waking 5:30 am on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Bike Upgrade" },
+  { name: "Q1 2027", start: [2027, 0, 3], end: [2027, 3, 3], w: [9, 21], target: 10, lo: 22 * 60, wake: 5 * 60, kg: 68, lift: 15,
+    body: "+1.5–2 kg, waist steady (±2 cm); first visible change in shoulders and arms", wakeTxt: "5:00 am feels normal on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Short foreign trip; my daughter's 1st birthday" },
+  { name: "Q2 2027", start: [2027, 3, 4], end: [2027, 6, 3], w: [22, 34], target: 11, lo: 21 * 60 + 45, wake: 4 * 60 + 45, kg: 70, lift: 25,
+    body: "~70 kg; clothes tighter at chest and arms, not the waist; people notice", wakeTxt: "4:45 am; lights out moves to 9:45", career: "Study, Apply, Repeat", reward: "Gift yourself a weekend just with friends chilling" },
+  { name: "Q3 2027", start: [2027, 6, 4], end: [2027, 9, 2], w: [35, 47], target: 12, lo: 21 * 60 + 30, wake: 4 * 60 + 30, kg: 71, lift: 35,
+    body: "~71 kg; progress slows (normal), switch to an intermediate program", wakeTxt: "4:30 am; lights out 9:30", career: "Offer or promotion to Sr Manager Product", reward: "Recliner sofa-set" },
+  { name: "Q4 2027", start: [2027, 9, 3], end: [2028, 0, 1], w: [48, 60], target: 13, lo: 21 * 60 + 15, wake: 4 * 60 + 15, kg: 72, lift: 40,
+    body: "~72 kg; clearly athletic look; first-year gains locked in", wakeTxt: "4:15 am; lights out 9:15", career: "Study, Apply, Repeat", reward: "5-day domestic family holiday" },
+  { name: "Q1 2028", start: [2028, 0, 2], end: [2028, 3, 1], w: [61, 73], target: 13, lo: 21 * 60, wake: 4 * 60, kg: 72.5, lift: 45,
+    body: "~72.5 kg; waist within +3 cm of baseline", wakeTxt: "4:00 am on weekdays; lights out 9:00", career: "Study, Apply, Repeat", reward: "Weekend staycation for you and your partner" },
+  { name: "Q2 2028", start: [2028, 3, 2], end: [2028, 6, 1], w: [74, 86], target: 13, lo: 21 * 60, wake: 4 * 60, kg: 73, lift: 50,
+    body: "~73 kg; muscular build obvious in side-by-side photos with baseline", wakeTxt: "4:00 am feels normal; 7 hours of sleep protected", career: "Offer or promotion to Director Product", reward: "A new car" },
+  { name: "Q3 2028 (Finish)", start: [2028, 6, 2], end: [2028, 9, 7], w: [87, 100], target: 14, lo: 21 * 60, wake: 4 * 60, kg: 74, lift: 55,
+    body: "74 kg and muscular; training and eating run on autopilot", wakeTxt: "4 am routine automatic, even after travel or late days", career: "Study, Apply, Repeat", reward: "Grand celebration on 14 Oct 2028 (my birthday): foreign trip with family + a printed photo book of the 2-year journey" }
+].map((p) => ({ ...p, start: new Date(...p.start), end: new Date(...p.end), weeks: p.w[1] - p.w[0] + 1 }));
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const REASONS = [
@@ -28,7 +45,7 @@ const LIFTS = [
   { k: "bench", name: "Bench", color: "var(--floor)" },
   { k: "deadlift", name: "Deadlift", color: "var(--gold)" }
 ];
-const TOTAL_Q = 9; // calendar quarters in the plan: Q4 2026 … Q4 2028
+const TOTAL_Q = 8; // calendar quarters in the plan: Q4 2026 … Q3 2028 (the plan's last week, 1–7 Oct 2028, counts as Q3 2028)
 
 /* ---------- date helpers ---------- */
 const d0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -43,6 +60,15 @@ const clampPlan = (d) => (d < START ? START : d > END ? END : d);
 const weekOf = (d) => Math.floor(Math.round((d0(d) - WEEK1_SUN) / 864e5) / 7) + 1;
 const weekSun = (n) => addDays(WEEK1_SUN, (n - 1) * 7);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// Phases and times of day
+const phaseIdx = (d) => { const x = d0(d); for (let i = PHASES.length - 1; i > 0; i--) if (x >= PHASES[i].start) return i; return 0; };
+const phaseOf = (d) => PHASES[phaseIdx(d)];
+const hm = (m) => { const h = Math.floor(m / 60) % 24, mm = String(m % 60).padStart(2, "0"); return ((h + 11) % 12 + 1) + ":" + mm; };
+const pmTxt = (m) => hm(m) + " pm", amTxt = (m) => hm(m) + " am";
+const toHHMM = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+const habitName = (hb, d) => (hb.k === "l" ? "Lights out by " + hm(phaseOf(d).lo) : hb.name);
+const habitHint = (hb, d) => (hb.k === "l" ? "In bed, lights off by " + pmTxt(phaseOf(d).lo) : hb.hint);
+const floorBed = (d) => pmTxt(phaseOf(d).lo + 60);
 // Calendar quarters (Q1 = Jan–Mar … Q4 = Oct–Dec). Stored as q1, q2, … counting from the plan's
 // first quarter: q1 = Q4 2026, q2 = Q1 2027, … q9 = Q4 2028.
 const Q0 = new Date(START.getFullYear(), Math.floor(START.getMonth() / 3) * 3, 1); // 1 Oct 2026
@@ -57,8 +83,9 @@ const qShort = (n) => "Q" + qNum(n) + " ’" + String(qYear(n)).slice(2);     //
 const qLabel = (n) => qName(n) + " · " + MON[calStart(n).getMonth()] + " – " + MON[calStart(n).getMonth() + 2];
 
 /* ---------- state ---------- */
-let state = { days: {}, weights: {}, lifts: {} };
-let liftsLoaded = false, liftQ = null, wMsg = "", lMsg = "";
+let state = { days: {}, weights: {}, lifts: {}, wakes: {} };
+let liftsLoaded = false, wakesLoaded = false, liftQ = null, wMsg = "", lMsg = "", wkMsg = "", wakeEdit = false;
+const expOpen = {}; // which milestone cards have "Expected outcomes" open
 let sync = null, user = null, authReady = false, configMissing = false, loadError = "";
 let tab = ["today", "weeks", "goals"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "today";
 let sel = clampPlan(today());
@@ -192,10 +219,24 @@ function weekInfo(n) {
   const need = Math.ceil(possible * 15 / 21);
   return { n, sun, days, score, possible, need, done: t > lastDay, win: score >= need, started: t >= (sun < START ? START : sun) };
 }
-function winsThrough(date) {
-  let w = 0;
-  for (let n = 1; n <= TOTAL_WEEKS; n++) { const wi = weekInfo(n); if (wi.done && wi.win && addDays(wi.sun, 6) <= date) w++; }
-  return w;
+// Per-phase progress: only the weeks inside the phase count.
+function phaseStats(p) {
+  // A week counts as a win as soon as it reaches 15/21, even before it ends.
+  let winsNow = 0, misses = 0, finished = 0;
+  for (let n = p.w[0]; n <= p.w[1]; n++) {
+    const wi = weekInfo(n);
+    if (wi.win) winsNow++;
+    if (wi.done) { finished++; if (!wi.win) misses++; }
+  }
+  const allowed = p.weeks - p.target, left = allowed - misses, t = today();
+  const status = winsNow >= p.target ? "earned" : misses > allowed ? "missed" : t < p.start ? "upcoming" : "active";
+  return { wins: winsNow, misses, finished, allowed, left: Math.max(0, left), toGo: p.weeks - finished, status };
+}
+// Weekly wake-up log: users/{uid}/wakes/w{week} -> { min } (minutes after midnight)
+const wakeOf = (n) => (state.wakes["w" + n] != null ? state.wakes["w" + n] : null);
+function phaseWakeAvg(p) {
+  const v = []; for (let n = p.w[0]; n <= p.w[1]; n++) { const m = wakeOf(n); if (m != null) v.push(m); }
+  return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
 }
 function allWins() {
   let w = 0, c = 0;
@@ -270,18 +311,23 @@ function viewToday() {
 
   const y = addDays(sel, -1);
   if (editable && inPlan(y) && !dayCounts(key(y)) && !dayCounts(k)) {
-    h += `<div class="banner warn"><b>Never miss twice.</b> ${same(sel, t) ? "Yesterday" : "The day before"} didn't count. Today, at least hit your floor day: bed by 11, 15 min study, 15 min movement.
+    h += `<div class="banner warn"><b>Never miss twice.</b> ${same(sel, t) ? "Yesterday" : "The day before"} didn't count. Today, at least hit your floor day: bed by ${floorBed(sel)}, 15 min study, 15 min movement.
       ${!dayRec(key(y)).r ? `<div><button class="todaylink" style="color:inherit;text-decoration:underline" data-act="prev">Note what got in the way →</button></div>` : ""}</div>`;
   } else if (editable && dayScore(k) === 3) {
     h += `<div class="banner good">All three done. That's a full day. ✓</div>`;
   }
 
+  const pi = phaseIdx(sel), ph = PHASES[pi];
+  if (editable && pi > 0 && sel - ph.start < 7 * 864e5 && ph.lo !== PHASES[pi - 1].lo) {
+    h += `<div class="banner info">🌙 <b>New phase: ${esc(ph.name)}.</b> Lights out is now by ${pmTxt(ph.lo)} (was ${pmTxt(PHASES[pi - 1].lo)}). Floor day: bed by ${floorBed(sel)}.</div>`;
+  }
+
   HABITS.forEach((hb) => {
     h += `<button class="habit${r[hb.k] ? " on" : ""}" data-habit="${hb.k}" ${editable ? "" : "disabled"}>
-      <div class="ic">${hb.icon}</div><div class="t"><b>${hb.name}</b><span>${hb.hint}</span></div><div class="check">✓</div></button>`;
+      <div class="ic">${hb.icon}</div><div class="t"><b>${habitName(hb, sel)}</b><span>${habitHint(hb, sel)}</span></div><div class="check">✓</div></button>`;
   });
   h += `<button class="habit floor${r.f ? " on" : ""}" data-habit="f" ${editable ? "" : "disabled"}>
-    <div class="ic">🛟</div><div class="t"><b>Floor day</b><span>Rough day? Bed by 11 · 15 min study · 15 min movement. Keeps the chain alive.</span></div><div class="check">✓</div></button>`;
+    <div class="ic">🛟</div><div class="t"><b>Floor day</b><span>Rough day? Bed by ${floorBed(sel)} · 15 min study · 15 min movement. Keeps the chain alive.</span></div><div class="check">✓</div></button>`;
 
   // "What got in the way?": shown for floor days, for past days that weren't full, or if a reason is already saved.
   if (editable && dayScore(k) < 3 && (r.f || sel < t || r.r || r.n)) {
@@ -295,6 +341,8 @@ function viewToday() {
     h += `<div class="banner info">🏋️ <b>${qn === 1 ? "Set your gym baseline." : "New quarter: time to log your lifts."}</b> Record your squat, bench and deadlift for ${qName(qn)}.
       <div><button class="todaylink" style="color:inherit;text-decoration:underline" data-act="golifts">Log lifts →</button></div></div>`;
   }
+
+  if (t >= START) h += phaseCardHtml(ph) + wakeCardHtml(wi, ph);
 
   const pct = wi.possible ? Math.min(100, wi.score / wi.possible * 100) : 0;
   const markPct = wi.possible ? wi.need / wi.possible * 100 : 0;
@@ -310,6 +358,36 @@ function viewToday() {
     <div class="stat"><b>${streak()}</b><span>day streak</span></div>
     <div class="stat"><b>${aw.c ? Math.round(aw.w / aw.c * 100) + "%" : "–"}</b><span>win rate</span></div></div>`;
   return h;
+}
+
+// "This phase" card on the Today tab: the phase's one target, misses left and its reward.
+function phaseCardHtml(p) {
+  const st = phaseStats(p), pi = PHASES.indexOf(p), next = PHASES[pi + 1];
+  let line;
+  if (st.status === "earned") line = `<div class="ph-earned">🎉 Target hit: ${st.wins} of ${p.target} ★. Reward earned!</div>`;
+  else if (st.status === "missed") line = `<div class="ph-missed">This phase's target can't be reached any more, so its reward is gone. ${next ? `Fresh start on ${fmt(next.start)}: ${esc(next.name)}.` : ""}</div>`;
+  else line = `<div class="muted">★ ${st.wins} of ${p.target} · <b class="${st.left === 0 ? "warnt" : ""}">${st.left} ${st.left === 1 ? "miss" : "misses"} left</b> · ${st.toGo} ${st.toGo === 1 ? "week" : "weeks"} to go</div>`;
+  return `<div class="card phase"><div class="row between"><b>${esc(p.name)} phase</b><span class="muted">${fmt(p.start)} – ${fmt(p.end)}</span></div>
+    ${line}<div class="bar"><i style="width:${Math.min(100, st.wins / p.target * 100)}%;background:var(--gold)"></i></div>
+    <div class="ph-reward${st.status === "missed" ? " gone" : ""}">🎁 ${esc(p.reward)}</div></div>`;
+}
+
+// Weekly wake-up log (an expected outcome, not a target).
+function wakeCardHtml(wi, p) {
+  if (!wi.started || !wakesLoaded) return "";
+  const m = wakeOf(wi.n);
+  const label = wi.n === weekOf(clampPlan(today())) ? "this week" : "week " + wi.n;
+  if (m != null && !wakeEdit) {
+    const diff = m - p.wake;
+    const vs = diff === 0 ? "right on the expected time" : Math.abs(diff) + " min " + (diff > 0 ? "later" : "earlier") + " than expected";
+    return `<div class="card wakec row between"><div><b>⏰ Usual wake-up ${label}: ${amTxt(m)}</b><div class="muted">Expected ~${amTxt(p.wake)} · ${vs}</div></div>
+      <button class="todaylink" data-act="wakeedit">Edit</button></div>`;
+  }
+  return `<div class="card wakec"><div class="row between"><b>⏰ Wake-up ${label}</b><span class="muted">expected ~${amTxt(p.wake)}</span></div>
+    <div class="muted" style="margin-top:2px">Log it once a week. It's an outcome of your lights-out time, not a target.</div>
+    <form id="wkform" class="row" style="gap:8px;margin-top:10px"><input id="wake" type="time" step="300" value="${m != null ? toHHMM(m) : ""}" aria-label="Usual wake-up time">
+      <button class="btn" type="submit">${m != null ? "Update" : "Save"}</button></form>
+    ${wkMsg ? `<div class="err" style="margin-top:6px">${esc(wkMsg)}</div>` : ""}</div>`;
 }
 
 // Summary of what got in the way over the last 90 days.
@@ -343,6 +421,12 @@ function viewWeeks() {
     <div class="card" style="padding:12px 10px">
     <div class="dayhead"><div></div><div class="cells">${DOW.map((d) => `<div>${d[0]}</div>`).join("")}</div><div style="text-align:right">Win?</div></div>`;
   for (let n = 1; n <= TOTAL_WEEKS; n++) {
+    const ph = PHASES.find((p) => p.w[0] === n);
+    if (ph) {
+      const st = phaseStats(ph);
+      const tag = st.status === "earned" ? `<span class="star">🎉 earned</span>` : st.status === "missed" ? `<span class="muted">missed</span>` : `★ ${st.wins}/${ph.target}`;
+      h += `<div class="phhead"><b>${esc(ph.name)}</b><span>target ${ph.target}/${ph.weeks} · ${tag}</span></div>`;
+    }
     const wi = weekInfo(n), first = wi.sun < START ? START : wi.sun;
     const lbl = fmt(first) + (n === 1 || (first.getMonth() === 0 && first.getDate() <= 7) ? " ’" + String(first.getFullYear()).slice(2) : "");
     const sc = !wi.started ? `<span class="muted">–</span>` : wi.win ? `<span class="star">★</span> ${wi.score}` : `${wi.score}<span class="muted">/${wi.need}</span>`;
@@ -417,25 +501,69 @@ function liftsCardHtml() {
   return h + `</div>`;
 }
 
-function viewGoals() {
-  const t = today(), lw = latestWeight();
-  let nextFound = false;
-  let h = `<h1>Milestones</h1><p class="sub">11 Nov 2026 – 14 Oct 2028</p><div class="card" style="padding:4px 16px">`;
-  MILESTONES.forEach((m) => {
-    const done = t > m.date;
-    let cls = "ms" + (done ? " done" : "");
-    if (!done && !nextFound) { cls += " next"; nextFound = true; }
-    let pr = "";
-    if (m.wins) pr = `★ weeks by this date: ${winsThrough(m.date)} / ${m.wins} needed`;
-    if (m.kg) pr = lw ? `Latest weight: ${lw.kg} kg → target ${m.kg} kg` : "Log your weight below to track this";
-    if (m.lifts) {
-      const avg = liftAvgChange();
-      pr += `<br>${avg != null ? `Lifts vs your ${qName(1)} baseline: ${pctTxt(avg)} on average` : "Log your quarterly lifts below to track gym progress"}`;
-    }
-    const days = Math.round((m.date - t) / 864e5);
-    h += `<div class="${cls}"><div class="dot"></div><div style="flex:1"><div class="row between"><b>${m.name}</b><span class="d">${fmt(m.date, true)}${days > 0 ? " · in " + days + " d" : ""}</span></div>
-      <div class="tg">${esc(m.target)}</div><div class="cel">🎉 ${esc(m.cel)}</div><div class="pr">${pr}</div></div></div>`;
+// Weekly wake-up times vs the expected time for each phase (earlier = higher).
+function wakeHistoryHtml() {
+  const W = 320, H = 130, L = 34, R = 8, T = 10, B = 20;
+  const logged = Object.keys(state.wakes).map((k) => ({ n: +k.slice(1), m: state.wakes[k] })).filter((x) => x.n >= 1 && x.n <= TOTAL_WEEKS).sort((a, b) => a.n - b.n);
+  let h = `<h2>Wake-up time · weekly</h2><div class="card">`;
+  if (!logged.length) return h + `<div class="muted">Log your usual wake-up time once a week from the Today tab. It shows here against the expected time for each phase.</div></div>`;
+  const all = logged.map((x) => x.m).concat(PHASES.map((p) => p.wake));
+  const mn = Math.min(...all) - 15, mx = Math.max(...all) + 15;
+  const X = (n) => L + (n - 1) / (TOTAL_WEEKS - 1) * (W - L - R);
+  const Y = (m) => T + (m - mn) / (mx - mn) * (H - T - B); // earlier times sit higher
+  let s = `<svg class="lchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly wake-up time">`;
+  [mn + 15, Math.round((mn + mx) / 2 / 15) * 15, mx - 15].forEach((m) => {
+    s += `<line x1="${L}" x2="${W - R}" y1="${Y(m).toFixed(1)}" y2="${Y(m).toFixed(1)}" stroke="var(--line)"/>
+      <text x="${L - 4}" y="${(Y(m) + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${hm(m)}</text>`;
   });
+  let path = "";
+  PHASES.forEach((p, i) => { path += `${i ? "L" : "M"}${X(p.w[0]).toFixed(1)},${Y(p.wake).toFixed(1)} L${X(p.w[1] + (i === PHASES.length - 1 ? 0 : 1)).toFixed(1)},${Y(p.wake).toFixed(1)} `; });
+  s += `<path d="${path}" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  if (logged.length > 1) s += `<polyline points="${logged.map((x) => X(x.n).toFixed(1) + "," + Y(x.m).toFixed(1)).join(" ")}" fill="none" stroke="var(--floor)" stroke-width="2" stroke-linejoin="round"/>`;
+  logged.forEach((x) => { s += `<circle cx="${X(x.n).toFixed(1)}" cy="${Y(x.m).toFixed(1)}" r="3" fill="var(--floor)"/>`; });
+  [1, 25, 50, 75, 100].forEach((n) => { s += `<text x="${X(n).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">wk ${n}</text>`; });
+  s += `</svg><div class="legend"><span><i style="background:var(--floor)"></i>Your wake-up</span><span><i style="background:var(--gold)"></i>Expected</span></div>`;
+  const last = logged[logged.length - 1];
+  return h + s + `<p class="muted" style="margin:8px 0 0">Latest: week ${last.n}, ${amTxt(last.m)}. Earlier is higher on the chart.</p></div>`;
+}
+
+function viewGoals() {
+  const t = today(), lw = latestWeight(), curI = t < START ? 0 : phaseIdx(clampPlan(t));
+  const daysTo = (d) => Math.round((d - t) / 864e5);
+  let h = `<h1>Milestones</h1><p class="sub">11 Nov 2026 – 7 Oct 2028 · 100 weeks · 🎂 celebration 14 Oct 2028</p>
+    <p class="muted" style="margin:4px 0 0">Each phase has one target: ★ weeks within that phase. Hit it and the reward is yours. Miss it and the reward is gone. The rest are expected outcomes to watch, not targets.</p>
+    <div class="card" style="padding:4px 16px">`;
+  PHASES.forEach((p, i) => {
+    const st = phaseStats(p), past = t > p.end;
+    let cls = "ms" + (st.status === "earned" ? " done" : st.status === "missed" ? " miss" : "") + (i === curI && !past ? " next" : "");
+    const dd = daysTo(p.end);
+    let prog;
+    if (st.status === "earned") prog = `<span class="ok">🎉 Target hit (${st.wins}/${p.target} ★). Reward earned.</span>`;
+    else if (st.status === "missed") prog = `<span class="warnt">Missed (${st.wins}/${p.target} ★). Reward gone.</span>`;
+    else if (st.status === "upcoming") prog = `Starts ${fmt(p.start, true)}`;
+    else prog = `★ ${st.wins} of ${p.target} · ${st.left} ${st.left === 1 ? "miss" : "misses"} left · ${st.toGo} ${st.toGo === 1 ? "week" : "weeks"} to go`;
+    // expected outcomes, each with your actual figure where there is data
+    const ex = [];
+    if (p.kg) ex.push(`<li><b>Weight:</b> ~${p.kg} kg${lw ? ` <span class="muted">· latest ${lw.kg} kg</span>` : ""}</li>`);
+    else ex.push(`<li><b>Weight and lifts:</b> baseline</li>`);
+    if (p.lift != null) { const avg = liftAvgChange(); ex.push(`<li><b>Lifts:</b> +${p.lift}% vs baseline${avg != null ? ` <span class="muted">· now ${pctTxt(avg)}</span>` : ""}</li>`); }
+    const wa = phaseWakeAvg(p);
+    ex.push(`<li><b>Wake-up:</b> ~${amTxt(p.wake)}${wa != null ? ` <span class="muted">· your average ${amTxt(wa)}</span>` : ""}</li>`);
+    ex.push(`<li><b>Body:</b> ${esc(p.body)}</li><li><b>Wake-up:</b> ${esc(p.wakeTxt)}</li><li><b>Career:</b> ${esc(p.career)}</li>`);
+    const open = expOpen[i] != null ? expOpen[i] : i === curI;
+    h += `<div class="${cls}"><div class="dot"></div><div style="flex:1;min-width:0">
+      <div class="row between"><b>${esc(p.name)}</b><span class="d">${fmt(p.start)} – ${fmt(p.end, true)}${dd > 0 && t >= p.start ? " · " + dd + " d left" : ""}</span></div>
+      <div class="tg"><b>Target:</b> ${p.target} wins out of ${p.weeks} weeks${p.weeks > p.target ? ` (${p.weeks - p.target} ${p.weeks - p.target === 1 ? "miss" : "misses"} allowed)` : " (no misses)"}</div>
+      <div class="tg" style="margin-top:0"><b>Daily:</b> lights out by ${pmTxt(p.lo)}</div>
+      <div class="pr">${prog}</div>
+      <div class="cel${st.status === "missed" ? " gone" : ""}">🎁 ${esc(p.reward)}</div>
+      <button class="expbtn" data-exp="${i}">Expected outcomes ${open ? "▴" : "▾"}</button>
+      ${open ? `<ul class="exp">${ex.join("")}</ul>` : ""}</div></div>`;
+  });
+  const fin = phaseStats(PHASES[PHASES.length - 1]), cd = daysTo(CELEBRATION);
+  h += `<div class="ms cel-day${fin.status === "earned" ? " done" : ""}"><div class="dot"></div><div style="flex:1">
+    <div class="row between"><b>🎂 Grand celebration</b><span class="d">Sat 14 Oct 2028${cd > 0 ? " · in " + cd + " d" : ""}</span></div>
+    <div class="tg">My birthday. ${fin.status === "earned" ? "Finish target hit: the foreign trip is on! ✈️" : fin.status === "missed" ? "Finish target missed this time." : "Earned by hitting the Finish phase target (14 of 14)."}</div></div></div>`;
   h += `</div><h2>Weight</h2><div class="card">
     <form id="wform" class="wform"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="200" placeholder="Weight (kg)">
       <input id="kgdate" type="date" value="${key(t)}" max="${key(t)}" aria-label="Date of weigh-in"><button class="btn" type="submit">Log</button></form>
@@ -448,13 +576,14 @@ function viewGoals() {
         <span><b>${w.kg} kg</b> <button data-delw="${w.d}" class="muted" style="margin-left:10px" aria-label="Delete">✕</button></span></div>`;
     });
     h += `</div>`;
-  } else h += `<p class="muted" style="margin:10px 0 0">Targets: ~70 kg by May ’27, ~72 kg by Nov ’27, 74 kg at the finish.</p>`;
-  h += `</div>` + liftsCardHtml() + `
+  } else h += `<p class="muted" style="margin:10px 0 0">Expected: ~68 kg by Apr ’27, ~70 kg by Jul ’27, ~72 kg by Jan ’28, 74 kg by Oct ’28.</p>`;
+  h += `</div>` + wakeHistoryHtml() + liftsCardHtml() + `
     <h2>The rules</h2><div class="card"><ul class="rules">
-      <li><b>Each day:</b> lights out by 10 · studied 3 hrs+ · gym/workout</li>
+      <li><b>Each day:</b> lights out by ${pmTxt(phaseOf(clampPlan(t)).lo)} (moves earlier each phase) · studied 3 hrs+ · gym/workout</li>
       <li><b>15+ / 21</b> ticks in a week = success week ★</li>
       <li><b>Never miss twice</b> consecutively</li>
-      <li><b>Floor day:</b> bed by 11, 15 min study, 15 min movement</li></ul></div>
+      <li><b>Floor day:</b> bed by ${floorBed(clampPlan(t))} (1 hour after lights out), 15 min study, 15 min movement</li>
+      <li><b>Each phase:</b> hit its ★ target to earn its reward. A missed phase's reward is gone: no comeback, no rollover.</li></ul></div>
     ${lockCardHtml()}
     <h2>Account & backup</h2><div class="card stack">
       <div class="muted">Signed in as ${esc(user && user.email || "")}</div>
@@ -530,7 +659,7 @@ function saveNote() {
 
 function goTab(name) {
   saveNote();
-  if (name !== tab) { wMsg = ""; lMsg = ""; }
+  if (name !== tab) { wMsg = ""; lMsg = ""; wkMsg = ""; wakeEdit = false; }
   tab = name;
   try { history.replaceState(null, "", "#" + tab); } catch (_) {}
   render(); window.scrollTo(0, 0);
@@ -555,9 +684,15 @@ document.addEventListener("click", async (e) => {
   if (b.dataset.tab) return goTab(b.dataset.tab);
   const act = b.dataset.act;
   if (act === "prev" || act === "next" || act === "today") {
-    saveNote(); clean("note");
+    saveNote(); clean("note", "wake"); wakeEdit = false; wkMsg = "";
     sel = act === "today" ? clampPlan(today()) : clampPlan(addDays(sel, act === "prev" ? -1 : 1));
     render(); window.scrollTo(0, 0); return;
+  }
+  if (act === "wakeedit") { wakeEdit = true; render(); const el = document.getElementById("wake"); if (el) el.focus(); return; }
+  if (b.dataset.exp != null) {
+    const i = +b.dataset.exp, curI = today() < START ? 0 : phaseIdx(clampPlan(today()));
+    const open = expOpen[i] != null ? expOpen[i] : i === curI;
+    expOpen[i] = !open; return render();
   }
   if (act === "golifts") {
     liftQ = quarterOf(clampPlan(today())); goTab("goals");
@@ -568,7 +703,7 @@ document.addEventListener("click", async (e) => {
     // Signing out removes the lock on this device; getting back in needs the account password.
     try { localStorage.removeItem(LOCK_KEY); } catch (_) {}
     locked = false; lockMsg = "";
-    await sync.logOut(); state = { days: {}, weights: {}, lifts: {} }; liftsLoaded = false; return;
+    await sync.logOut(); state = { days: {}, weights: {}, lifts: {}, wakes: {} }; liftsLoaded = false; wakesLoaded = false; return;
   }
   if (act === "unlock") return unlock(false);
   if (act === "lockon") return enableLock();
@@ -582,7 +717,7 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if (act === "export") {
-    const data = JSON.stringify({ app: "goal-tracker", exported: new Date().toISOString(), days: state.days, weights: state.weights, lifts: state.lifts }, null, 2);
+    const data = JSON.stringify({ app: "goal-tracker", exported: new Date().toISOString(), days: state.days, weights: state.weights, lifts: state.lifts, wakes: state.wakes }, null, 2);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));
     a.download = "goal-tracker-backup-" + key(today()) + ".json";
@@ -640,6 +775,17 @@ document.addEventListener("submit", async (e) => {
     sync.setWeight(dv, kg).catch((err) => showStatus("error", err.code));
     return;
   }
+  if (e.target.id === "wkform") {
+    const v = document.getElementById("wake").value;
+    const mt = /^(\d{1,2}):(\d{2})/.exec(v || "");
+    const min = mt ? +mt[1] * 60 + +mt[2] : NaN;
+    if (!(min >= 180 && min <= 600)) { wkMsg = "Enter a time between 3:00 and 10:00 am."; return render(); }
+    const n = weekOf(sel);
+    state.wakes["w" + n] = min; wkMsg = ""; wakeEdit = false;
+    clean("wake"); render();
+    sync.setWake("w" + n, min).catch((err) => showStatus("error", err.code));
+    return;
+  }
   if (e.target.id === "lform") {
     const rec = {}; let bad = false;
     LIFTS.forEach((lf) => {
@@ -692,7 +838,9 @@ document.addEventListener("change", async (e) => {
       const r = {}; ["squat", "bench", "deadlift"].forEach((x) => { const v = data.lifts[q][x]; if (typeof v === "number" && v > 0 && v < 500) r[x] = v; });
       if (Object.keys(r).length) lifts[q] = r;
     });
-    const n = await sync.importAll(days, weights, lifts);
+    const wakes = {};
+    Object.keys(data.wakes || {}).forEach((w) => { const v = data.wakes[w]; if (/^w\d{1,3}$/.test(w) && typeof v === "number" && v > 120 && v < 720) wakes[w] = v; });
+    const n = await sync.importAll(days, weights, lifts, wakes);
     acctMsg(`Imported ${n} entries.`);
   } catch (err) { acctMsg("That file couldn't be imported."); }
   e.target.value = "";
@@ -732,8 +880,9 @@ async function boot() {
         (days) => { state.days = days; render(); },
         (weights) => { state.weights = weights; render(); },
         showStatus,
-        (lifts) => { state.lifts = lifts; liftsLoaded = true; render(); });
-    } else { sync.unsubscribe(); state = { days: {}, weights: {}, lifts: {} }; liftsLoaded = false; }
+        (lifts) => { state.lifts = lifts; liftsLoaded = true; render(); },
+        (wakes) => { state.wakes = wakes; wakesLoaded = true; render(); });
+    } else { sync.unsubscribe(); state = { days: {}, weights: {}, lifts: {}, wakes: {} }; liftsLoaded = false; wakesLoaded = false; }
     render();
     if (u && locked && lockCred()) autoUnlock(); // show the Face ID / Touch ID prompt straight away
   });

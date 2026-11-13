@@ -98,9 +98,27 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;paddin
 .ms .d{font-size:12px;color:var(--muted)}
 .ms .tg{font-size:14px;margin:4px 0}
 .ms .cel{font-size:13px;color:var(--gold)}
-.ms .pr{font-size:12px;color:var(--muted);margin-top:4px}
-input[type=number],input[type=email],input[type=password],input[type=text],input[type=date],select{font:inherit;font-size:17px;width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);min-width:0}
-input[type=date]{-webkit-appearance:none;appearance:none;min-height:48px}
+.ms .pr{font-size:13px;color:var(--muted);margin:4px 0}
+.ms.miss .dot{background:var(--warn)}
+.ms.done.next .dot,.ms.done .dot{background:var(--accent)}
+.ms .cel.gone,.ph-reward.gone{text-decoration:line-through;opacity:.6}
+.ms.cel-day .dot{background:var(--gold-soft);box-shadow:inset 0 0 0 2px var(--gold)}
+.ok{color:var(--accent);font-weight:600}
+.warnt{color:var(--warn);font-weight:600}
+.expbtn{font-size:13px;color:var(--accent);font-weight:600;margin-top:6px;padding:2px 0}
+.exp{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.5}
+.exp li{margin:3px 0}
+.phase .bar{margin-top:8px}
+.phase .muted b{font-weight:600}
+.ph-earned{color:var(--accent);font-weight:600;font-size:14px;margin-top:4px}
+.ph-missed{color:var(--warn);font-size:14px;margin-top:4px;line-height:1.4}
+.ph-reward{font-size:14px;color:var(--gold);margin-top:10px}
+.wakec #wake{flex:1}
+.phhead{display:flex;justify-content:space-between;align-items:baseline;padding:14px 4px 6px;font-size:13px;border-bottom:1px solid var(--line)}
+.phhead b{font-size:14px}
+.phhead span{color:var(--muted)}
+input[type=number],input[type=email],input[type=password],input[type=text],input[type=date],input[type=time],select{font:inherit;font-size:17px;width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);min-width:0}
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;min-height:48px}
 select{-webkit-appearance:none;appearance:none;font-size:16px;padding-right:34px;
   background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
   background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat}

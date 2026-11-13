@@ -29,12 +29,12 @@ export const resetPassword = (email) => sendPasswordResetEmail(auth, email);
 
 export function unsubscribe() { unsubs.forEach((u) => u()); unsubs = []; uid = null; }
 
-export function subscribe(userId, onDays, onWeights, onStatus, onLifts) {
+export function subscribe(userId, onDays, onWeights, onStatus, onLifts, onWakes) {
   unsubscribe();
   uid = userId;
-  const meta = { days: null, weights: null, lifts: null };
+  const meta = { days: null, weights: null, lifts: null, wakes: null };
   const report = () => {
-    const m = [meta.days, meta.weights, meta.lifts].filter(Boolean);
+    const m = [meta.days, meta.weights, meta.lifts, meta.wakes].filter(Boolean);
     if (!m.length) return;
     const pending = m.some((x) => x.hasPendingWrites);
     const cache = m.some((x) => x.fromCache);
@@ -74,6 +74,18 @@ export function subscribe(userId, onDays, onWeights, onStatus, onLifts) {
     });
     meta.lifts = snap.metadata; if (onLifts) onLifts(out); report();
   }, onErr));
+
+  // Weekly wake-up log: users/{uid}/wakes/w12 -> { min } (minutes after midnight, e.g. 285 = 4:45 am)
+  unsubs.push(onSnapshot(collection(db, "users", uid, "wakes"), { includeMetadataChanges: true }, (snap) => {
+    const out = {};
+    snap.forEach((d) => { const x = d.data(); if (typeof x.min === "number") out[d.id] = x.min; });
+    meta.wakes = snap.metadata; if (onWakes) onWakes(out); report();
+  }, onErr));
+}
+
+export function setWake(w, min) {
+  const ref = doc(db, "users", uid, "wakes", w);
+  return min == null ? deleteDoc(ref) : setDoc(ref, { min, updatedAt: serverTimestamp() });
 }
 
 export function setLift(q, rec) {
@@ -92,11 +104,12 @@ export function setWeight(key, kg) {
   return kg == null ? deleteDoc(ref) : setDoc(ref, { kg, updatedAt: serverTimestamp() });
 }
 
-export async function importAll(days, weights, lifts) {
+export async function importAll(days, weights, lifts, wakes) {
   const ops = [];
   Object.keys(days || {}).forEach((k) => ops.push(["days", k, { ...days[k] }]));
   Object.keys(weights || {}).forEach((k) => ops.push(["weights", k, { kg: weights[k] }]));
   Object.keys(lifts || {}).forEach((k) => ops.push(["lifts", k, { ...lifts[k] }]));
+  Object.keys(wakes || {}).forEach((k) => ops.push(["wakes", k, { min: wakes[k] }]));
   for (let i = 0; i < ops.length; i += 400) {
     const batch = writeBatch(db);
     ops.slice(i, i + 400).forEach(([col, k, data]) =>

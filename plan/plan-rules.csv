@@ -1,0 +1,17 @@
+Rule,Value
+Plan start,2026-11-11
+Plan end,2028-10-07
+Length,100 weeks (697 days)
+Grand celebration,2028-10-14
+Week,Sunday to Saturday (week 1 is Wed 11 Nov – Sat 14 Nov 2026)
+Daily targets (3),Lights out by the phase's time (see milestones.csv) · Studied 3 hrs+ · Gym / workout
+Success week ★,15+ of 21 ticks (week 1 pro-rated: 9 of 12)
+Floor day,Bed within 1 hour of the phase's lights-out time · 15 min study · 15 min movement. Keeps the streak alive; does not add ticks
+Never miss twice,Never two days in a row that don't count
+Milestone target,"Only the win target (★ weeks within the phase). Counted per phase, not cumulative"
+Reward,Earned only by hitting the phase's win target. Outcomes don't affect it
+Missed phase,"Reward is gone. No comeback rule, no rollover. Start fresh next phase"
+Expected outcomes,"Weight, lifts, wake-up, body and career are expectations to monitor, not targets"
+Weekly log,"Usual wake-up time, once a week"
+Quarterly log,"Squat, bench and deadlift best working set (kg); Q4 2026 is the baseline"
+Any-day log,Body weight (kg)

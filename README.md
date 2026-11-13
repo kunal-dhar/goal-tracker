@@ -112,3 +112,12 @@ your iPhone. A small **"Synced ✓"** badge appears at the top right whenever a 
 - **Updating the app later:** after changing any file on GitHub, also edit `sw.js` and change
   `gt-v1` to `gt-v2` (then `gt-v3`, …). This makes your devices fetch the new version.
   Close and reopen the app once or twice to see it.
+
+## The plan (master copy)
+
+The plan itself lives in the `plan/` folder:
+
+- `plan/milestones.csv`: the 8 quarterly phases with dates, win targets, lights-out times, expected outcomes and rewards
+- `plan/plan-rules.csv`: the rules (100 weeks, 11 Nov 2026 – 7 Oct 2028, celebration 14 Oct 2028, success week, floor day, rewards)
+
+GitHub shows both as tables. The app's `PHASES` list at the top of `app.js` mirrors `milestones.csv`, so when you change the plan, change both (or ask Claude to).
