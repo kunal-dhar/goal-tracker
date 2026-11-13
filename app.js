@@ -6,6 +6,7 @@ import { firebaseConfig } from "./firebase-config.js";
 const START = new Date(2026, 10, 11), END = new Date(2028, 9, 7), WEEK1_SUN = new Date(2026, 10, 8);
 const CELEBRATION = new Date(2028, 9, 14); // 14 Oct 2028, birthday: grand celebration
 const TOTAL_WEEKS = 100;
+const GOAL_KG = 75; // final body-weight goal (at ~18% body fat), shown on the weight chart
 const HABITS = [
   { k: "l", icon: "🌙", name: "Lights out", hint: "In bed, lights off" },
   { k: "s", icon: "📚", name: "Studied 3 hrs+", hint: "Focused study time" },
@@ -14,23 +15,33 @@ const HABITS = [
 // One phase per quarter. target = ★ weeks needed within the phase (the only target; it decides the reward).
 // lo = lights-out time (minutes after midnight), the daily habit for that phase.
 // kg, lift, wake, body, wakeTxt, career = expected outcomes: shown for monitoring, never pass/fail.
+// bodyPhase, bodyCal, bodyTarget = the body plan for the quarter (phase, calories vs maintenance, end-of-quarter target).
+// body = extra notes. Target plan: ~75 kg at ~18% body fat by Oct 2028.
 const PHASES = [
   { name: "Q4 2026", start: [2026, 10, 11], end: [2027, 0, 2], w: [1, 8], target: 6, lo: 22 * 60, wake: 5 * 60 + 30, kg: null, lift: null,
-    body: "Baseline logged; training 5x/week on a set program; ~2 g protein per kg daily", wakeTxt: "Waking 5:30 am on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Bike Upgrade" },
-  { name: "Q1 2027", start: [2027, 0, 3], end: [2027, 3, 3], w: [9, 21], target: 10, lo: 22 * 60, wake: 5 * 60, kg: 68, lift: 15,
-    body: "+1.5–2 kg, waist steady (±2 cm); first visible change in shoulders and arms", wakeTxt: "5:00 am feels normal on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Short foreign trip; my daughter's 1st birthday" },
-  { name: "Q2 2027", start: [2027, 3, 4], end: [2027, 6, 3], w: [22, 34], target: 11, lo: 21 * 60 + 45, wake: 4 * 60 + 45, kg: 70, lift: 25,
-    body: "~70 kg; clothes tighter at chest and arms, not the waist; people notice", wakeTxt: "4:45 am; lights out moves to 9:45", career: "Study, Apply, Repeat", reward: "Gift yourself a weekend just with friends chilling" },
-  { name: "Q3 2027", start: [2027, 6, 4], end: [2027, 9, 2], w: [35, 47], target: 12, lo: 21 * 60 + 30, wake: 4 * 60 + 30, kg: 71, lift: 35,
-    body: "~71 kg; progress slows (normal), switch to an intermediate program", wakeTxt: "4:30 am; lights out 9:30", career: "Offer or promotion to Sr Manager Product", reward: "Recliner sofa-set" },
-  { name: "Q4 2027", start: [2027, 9, 3], end: [2028, 0, 1], w: [48, 60], target: 13, lo: 21 * 60 + 15, wake: 4 * 60 + 15, kg: 72, lift: 40,
-    body: "~72 kg; clearly athletic look; first-year gains locked in", wakeTxt: "4:15 am; lights out 9:15", career: "Study, Apply, Repeat", reward: "5-day domestic family holiday" },
-  { name: "Q1 2028", start: [2028, 0, 2], end: [2028, 3, 1], w: [61, 73], target: 13, lo: 21 * 60, wake: 4 * 60, kg: 72.5, lift: 45,
-    body: "~72.5 kg; waist within +3 cm of baseline", wakeTxt: "4:00 am on weekdays; lights out 9:00", career: "Study, Apply, Repeat", reward: "Weekend staycation for you and your partner" },
-  { name: "Q2 2028", start: [2028, 3, 2], end: [2028, 6, 1], w: [74, 86], target: 13, lo: 21 * 60, wake: 4 * 60, kg: 73, lift: 50,
-    body: "~73 kg; muscular build obvious in side-by-side photos with baseline", wakeTxt: "4:00 am feels normal; 7 hours of sleep protected", career: "Offer or promotion to Director Product", reward: "A new car" },
-  { name: "Q3 2028 (Finish)", start: [2028, 6, 2], end: [2028, 9, 7], w: [87, 100], target: 14, lo: 21 * 60, wake: 4 * 60, kg: 74, lift: 55,
-    body: "74 kg and muscular; training and eating run on autopilot", wakeTxt: "4 am routine automatic, even after travel or late days", career: "Study, Apply, Repeat", reward: "Grand celebration on 14 Oct 2028 (my birthday): foreign trip with family + a printed photo book of the 2-year journey" }
+    bodyPhase: "Foundation: full body 3x/week; DEXA scan and blood work", bodyCal: "+200 kcal over maintenance", bodyTarget: "~67 kg",
+    body: "Baseline logged; training 3x/week (full body) on a set program; ~2 g protein per kg daily", wakeTxt: "Waking 5:30 am on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Bike Upgrade" },
+  { name: "Q1 2027", start: [2027, 0, 3], end: [2027, 3, 3], w: [9, 21], target: 10, lo: 22 * 60, wake: 5 * 60, kg: 69, lift: 15,
+    bodyPhase: "Lean bulk: upper/lower split 4x/week", bodyCal: "+300 kcal", bodyTarget: "~69 kg",
+    body: "~+2 kg, waist up no more than ~1 cm; first visible change in shoulders and arms", wakeTxt: "5:00 am feels normal on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Short foreign trip; my daughter's 1st birthday" },
+  { name: "Q2 2027", start: [2027, 3, 4], end: [2027, 6, 3], w: [22, 34], target: 11, lo: 21 * 60 + 45, wake: 4 * 60 + 45, kg: 70.5, lift: 25,
+    bodyPhase: "Lean bulk; deload (an easier week) every 6–8 weeks", bodyCal: "+250 kcal", bodyTarget: "~70.5 kg",
+    body: "~70.5 kg; clothes tighter at chest and arms, not the waist; people notice", wakeTxt: "4:45 am; lights out moves to 9:45", career: "Study, Apply, Repeat", reward: "Gift yourself a weekend just with friends chilling" },
+  { name: "Q3 2027", start: [2027, 6, 4], end: [2027, 9, 2], w: [35, 47], target: 12, lo: 21 * 60 + 30, wake: 4 * 60 + 30, kg: 72, lift: 35,
+    bodyPhase: "Lean bulk; 4-week mini-cut only if body fat goes above ~21%", bodyCal: "+200–250 kcal", bodyTarget: "~72 kg",
+    body: "~72 kg; progress slows (normal), switch to an intermediate program", wakeTxt: "4:30 am; lights out 9:30", career: "Offer or promotion to Sr Manager Product", reward: "Recliner sofa-set" },
+  { name: "Q4 2027", start: [2027, 9, 3], end: [2028, 0, 1], w: [48, 60], target: 13, lo: 21 * 60 + 15, wake: 4 * 60 + 15, kg: 73, lift: 40,
+    bodyPhase: "Maintenance in October (Diwali), then resume the bulk; DEXA checkpoint", bodyCal: "Maintenance, then +200 kcal", bodyTarget: "~73 kg, ~20% body fat",
+    body: "~73 kg; clearly athletic look; first-year gains locked in", wakeTxt: "4:15 am; lights out 9:15", career: "Study, Apply, Repeat", reward: "5-day domestic family holiday" },
+  { name: "Q1 2028", start: [2028, 0, 2], end: [2028, 3, 1], w: [61, 73], target: 13, lo: 21 * 60, wake: 4 * 60, kg: 74, lift: 45,
+    bodyPhase: "Lean bulk; 12–18 sets per muscle per week", bodyCal: "+150–200 kcal", bodyTarget: "~74 kg",
+    body: "~74 kg; waist within +3 cm of baseline", wakeTxt: "4:00 am on weekdays; lights out 9:00", career: "Study, Apply, Repeat", reward: "Weekend staycation for you and your partner" },
+  { name: "Q2 2028", start: [2028, 3, 2], end: [2028, 6, 1], w: [74, 86], target: 13, lo: 21 * 60, wake: 4 * 60, kg: 75.5, lift: 50,
+    bodyPhase: "Lean bulk", bodyCal: "+200 kcal", bodyTarget: "~75.5 kg",
+    body: "~75.5 kg; muscular build obvious in side-by-side photos with baseline", wakeTxt: "4:00 am feels normal; 7 hours of sleep protected", career: "Offer or promotion to Director Product", reward: "A new car" },
+  { name: "Q3 2028 (Finish)", start: [2028, 6, 2], end: [2028, 9, 7], w: [87, 100], target: 14, lo: 21 * 60, wake: 4 * 60, kg: 75, lift: 55,
+    bodyPhase: "Peak at ~76.5 kg (~20%) by August; cut from September; final DEXA in October", bodyCal: "+150 kcal, then −400 kcal", bodyTarget: "~75 kg at ~18% body fat",
+    body: "~75 kg at ~18% body fat and muscular; training and eating run on autopilot", wakeTxt: "4 am routine automatic, even after travel or late days", career: "Study, Apply, Repeat", reward: "Grand celebration on 14 Oct 2028 (my birthday): foreign trip with family + a printed photo book of the 2-year journey" }
 ].map((p) => ({ ...p, start: new Date(...p.start), end: new Date(...p.end), weeks: p.w[1] - p.w[0] + 1 }));
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -87,6 +98,7 @@ let state = { days: {}, weights: {}, lifts: {}, wakes: {} };
 let liftsLoaded = false, wakesLoaded = false, liftQ = null, wMsg = "", lMsg = "", wkMsg = "";
 let delPending = null, wakeW = null;
 const expOpen = {}; // which milestone cards have "Expected outcomes" open
+const bodyOpen = {}; // which milestone cards have the "Body" accordion open
 let sync = null, user = null, authReady = false, configMissing = false, loadError = "";
 let tab = ["today", "weeks", "goals", "logs"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "today";
 let sel = clampPlan(today());
@@ -408,16 +420,16 @@ function viewWeeks() {
 }
 
 function spark(ws) {
-  const W = 320, H = 90, P = 8, kgs = ws.map((w) => w.kg).concat([74]);
+  const W = 320, H = 90, P = 8, kgs = ws.map((w) => w.kg).concat([GOAL_KG]);
   const mn = Math.min(...kgs) - 1, mx = Math.max(...kgs) + 1;
   const t0 = parseKey(ws[0].d).getTime(), t1 = Math.max(parseKey(ws[ws.length - 1].d).getTime(), t0 + 864e5);
   const X = (d) => P + (parseKey(d).getTime() - t0) / (t1 - t0) * (W - 2 * P);
   const Y = (k) => H - P - (k - mn) / (mx - mn) * (H - 2 * P);
   const pts = ws.map((w) => X(w.d).toFixed(1) + "," + Y(w.kg).toFixed(1)).join(" ");
-  const y74 = Y(74).toFixed(1);
+  const y74 = Y(GOAL_KG).toFixed(1);
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <line x1="0" x2="${W}" y1="${y74}" y2="${y74}" stroke="var(--gold)" stroke-dasharray="4 4" stroke-width="1"/>
-    <text x="${W - 4}" y="${+y74 - 4}" text-anchor="end" font-size="10" fill="var(--gold)">74 kg goal</text>
+    <text x="${W - 4}" y="${+y74 - 4}" text-anchor="end" font-size="10" fill="var(--gold)">${GOAL_KG} kg goal</text>
     ${ws.length > 1 ? `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : ""}
     ${ws.map((w) => `<circle cx="${X(w.d).toFixed(1)}" cy="${Y(w.kg).toFixed(1)}" r="3" fill="var(--accent)"/>`).join("")}
   </svg>`;
@@ -511,6 +523,22 @@ function wakeHistoryHtml() {
   return h + s + `<p class="muted" style="margin:8px 0 0">Latest: week ${last.n}, ${amTxt(last.m)}. Earlier is higher on the chart.</p></div>`;
 }
 
+// Body outcome as its own accordion: Phase, Calories, Target and Notes stacked, plus your latest figures.
+function bodyAccordion(p, i, lw, avg) {
+  const open = !!bodyOpen[i];
+  const row = (label, val) => `<div class="brow"><span>${label}</span><div>${val}</div></div>`;
+  const lifts = p.lift != null ? `+${p.lift}% vs baseline${avg != null ? ` · now ${pctTxt(avg)}` : ""}` : `Baseline${avg != null ? ` · now ${pctTxt(avg)}` : ""}`;
+  return `<li class="bacc"><button class="bhead" data-body="${i}" aria-expanded="${open}">
+      <span><b>Body:</b> ${esc(p.bodyTarget)}</span><span class="chev">${open ? "▴" : "▾"}</span></button>
+    ${open ? `<div class="bbody">
+      ${row("Phase", esc(p.bodyPhase))}
+      ${row("Calories", esc(p.bodyCal))}
+      ${row("Target", esc(p.bodyTarget) + (lw ? `<div class="muted">Latest ${lw.kg} kg</div>` : ""))}
+      ${row("Lifts", lifts)}
+      ${row("Notes", esc(p.body))}
+    </div>` : ""}</li>`;
+}
+
 function viewGoals() {
   const t = today(), lw = latestWeight(), curI = t < START ? 0 : phaseIdx(clampPlan(t));
   const daysTo = (d) => Math.round((d - t) / 864e5);
@@ -528,11 +556,8 @@ function viewGoals() {
     else prog = `★ ${st.wins} of ${p.target} · ${st.left} ${st.left === 1 ? "miss" : "misses"} left · ${st.toGo} ${st.toGo === 1 ? "week" : "weeks"} to go`;
     // expected outcomes, each with your actual figure where there is data
     const avg = liftAvgChange(), wa = phaseWakeAvg(p);
-    const bodyNums = p.kg
-      ? `Weight ~${p.kg} kg${lw ? ` · latest ${lw.kg} kg` : ""}<br>Lifts +${p.lift}% vs baseline${avg != null ? ` · now ${pctTxt(avg)}` : ""}`
-      : `Weight and lifts: baseline${lw ? ` · latest ${lw.kg} kg` : ""}`;
     const ex = [
-      `<li><b>Body:</b> ${esc(p.body)}<div class="muted">${bodyNums}</div></li>`,
+      bodyAccordion(p, i, lw, avg),
       `<li><b>Wake-up:</b> ${esc(p.wakeTxt)}<div class="muted">Expected ~${amTxt(p.wake)}${wa != null ? ` · your average ${amTxt(wa)}` : ""}</div></li>`,
       `<li><b>Career:</b> ${esc(p.career)}</li>`
     ];
@@ -574,7 +599,7 @@ function viewLogs() {
         <span><b>${w.kg} kg</b> <button data-delw="${w.d}" class="${delPending === w.d ? "warnt" : "muted"}" style="margin-left:10px" aria-label="Delete">${delPending === w.d ? "Delete?" : "✕"}</button></span></div>`;
     });
     h += `</div>`;
-  } else h += `<p class="muted" style="margin:10px 0 0">Expected: ~68 kg by Apr ’27, ~70 kg by Jul ’27, ~72 kg by Jan ’28, 74 kg by Oct ’28.</p>`;
+  } else h += `<p class="muted" style="margin:10px 0 0">Expected: ~69 kg by Apr ’27, ~72 kg by Oct ’27, ~74 kg by Apr ’28, ~75 kg at ~18% body fat by Oct ’28.</p>`;
   h += `</div>` + wakeHistoryHtml() + liftsCardHtml() + lockCardHtml() + `
     <h2>Account</h2><div class="card stack">
       <div class="muted">${esc(user && user.email || "")}</div>
@@ -681,6 +706,7 @@ document.addEventListener("click", async (e) => {
     render(); window.scrollTo(0, 0); return;
   }
   if (act === "gowake") { goTab("logs"); const el = document.getElementById("wakelog"); if (el) el.scrollIntoView({ block: "start" }); return; }
+  if (b.dataset.body != null) { const i = +b.dataset.body; bodyOpen[i] = !bodyOpen[i]; return render(); }
   if (b.dataset.exp != null) {
     const i = +b.dataset.exp, curI = today() < START ? 0 : phaseIdx(clampPlan(today()));
     const open = expOpen[i] != null ? expOpen[i] : i === curI;
