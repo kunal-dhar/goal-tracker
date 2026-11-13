@@ -85,9 +85,10 @@ const qLabel = (n) => qName(n) + " · " + MON[calStart(n).getMonth()] + " – " 
 /* ---------- state ---------- */
 let state = { days: {}, weights: {}, lifts: {}, wakes: {} };
 let liftsLoaded = false, wakesLoaded = false, liftQ = null, wMsg = "", lMsg = "", wkMsg = "", wakeEdit = false;
+let delPending = null;
 const expOpen = {}; // which milestone cards have "Expected outcomes" open
 let sync = null, user = null, authReady = false, configMissing = false, loadError = "";
-let tab = ["today", "weeks", "goals"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "today";
+let tab = ["today", "weeks", "goals", "logs"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "today";
 let sel = clampPlan(today());
 let loginMsg = "", busy = false;
 
@@ -104,7 +105,7 @@ const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/
 const rnd = (n) => crypto.getRandomValues(new Uint8Array(n));
 try {
   if (window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then((ok) => { lockSupported = !!ok; if (tab === "goals") render(); }).catch(() => {});
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then((ok) => { lockSupported = !!ok; if (tab === "logs") render(); }).catch(() => {});
   }
 } catch (_) {}
 
@@ -192,15 +193,11 @@ function viewLock() {
 }
 function lockCardHtml() {
   const on = !!lockCred();
-  let h = `<h2>App lock</h2><div class="card stack">`;
-  if (on) h += `<div>🔒 <b>${BIO} lock is on</b> for this device. The app asks every time it opens, and again after 1 hour in the background.</div>
-      <button class="btn ghost wide" data-act="lockoff">Turn off ${BIO} lock</button>`;
-  else if (lockSupported) h += `<div class="muted">Require ${BIO} every time this app opens on this device.</div>
-      <button class="btn wide" data-act="lockon">Turn on ${BIO} lock</button>`;
-  else h += `<div class="muted">This browser can't use ${BIO} for web apps. On iPhone, open the app from your home screen; on Mac, use Safari or Chrome on a Mac with Touch ID.</div>`;
-  h += `<div class="muted" id="lockMsg">${esc(lockMsg)}</div>
-    <div class="muted" style="font-size:12px">Set it up separately on each device. Your login password still protects your data either way.</div></div>`;
-  return h;
+  let h = `<h2>App lock</h2><div class="card">`;
+  if (on) h += `<div class="row between"><span>🔒 ${BIO} lock is <b>on</b></span><button class="btn ghost" data-act="lockoff">Turn off</button></div>`;
+  else if (lockSupported) h += `<div class="row between"><span>🔓 ${BIO} lock is off</span><button class="btn" data-act="lockon">Turn on</button></div>`;
+  else h += `<div class="muted">${BIO} lock isn't available in this browser.</div>`;
+  return h + (lockMsg ? `<div class="muted" style="margin-top:8px">${esc(lockMsg)}</div>` : "") + `</div>`;
 }
 
 /* ---------- scoring ---------- */
@@ -302,7 +299,7 @@ function viewToday() {
   const editable = !future && inPlan(sel) && t >= START;
   let h = `<h1>${same(sel, t) ? "Today" : DOW[sel.getDay()]}</h1>
     <p class="sub">Week ${wi.n} of ${TOTAL_WEEKS} · health, career move, family</p>`;
-  if (t < START) h += `<div class="banner info">Your plan starts Wed 11 Nov 2026. Ticking opens on day one. You can already log your weight on the Milestones tab.</div>`;
+  if (t < START) h += `<div class="banner info">Your plan starts Wed 11 Nov 2026. Ticking opens on day one. You can already log your weight on the Logs tab.</div>`;
 
   h += `<div class="datebar"><button class="navbtn" data-act="prev" ${sel <= START ? "disabled" : ""} aria-label="Previous day">‹</button>
     <div class="datelabel"><b>${DOW[sel.getDay()]}, ${fmt(sel, true)}</b><span>Day ${Math.round((sel - START) / 864e5) + 1} of ${Math.round((END - START) / 864e5) + 1}</span>
@@ -512,7 +509,8 @@ function wakeHistoryHtml() {
   const X = (n) => L + (n - 1) / (TOTAL_WEEKS - 1) * (W - L - R);
   const Y = (m) => T + (m - mn) / (mx - mn) * (H - T - B); // earlier times sit higher
   let s = `<svg class="lchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly wake-up time">`;
-  [mn + 15, Math.round((mn + mx) / 2 / 15) * 15, mx - 15].forEach((m) => {
+  const ticks = []; for (let m = Math.ceil(mn / 30) * 30; m <= mx; m += 30) ticks.push(m);
+  ticks.filter((_, i) => ticks.length <= 4 || i % Math.ceil(ticks.length / 4) === 0).forEach((m) => {
     s += `<line x1="${L}" x2="${W - R}" y1="${Y(m).toFixed(1)}" y2="${Y(m).toFixed(1)}" stroke="var(--line)"/>
       <text x="${L - 4}" y="${(Y(m) + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${hm(m)}</text>`;
   });
@@ -521,7 +519,7 @@ function wakeHistoryHtml() {
   s += `<path d="${path}" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
   if (logged.length > 1) s += `<polyline points="${logged.map((x) => X(x.n).toFixed(1) + "," + Y(x.m).toFixed(1)).join(" ")}" fill="none" stroke="var(--floor)" stroke-width="2" stroke-linejoin="round"/>`;
   logged.forEach((x) => { s += `<circle cx="${X(x.n).toFixed(1)}" cy="${Y(x.m).toFixed(1)}" r="3" fill="var(--floor)"/>`; });
-  [1, 25, 50, 75, 100].forEach((n) => { s += `<text x="${X(n).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">wk ${n}</text>`; });
+  [1, 25, 50, 75, 100].forEach((n) => { s += `<text x="${X(n).toFixed(1)}" y="${H - 6}" text-anchor="${n === 1 ? "start" : n === 100 ? "end" : "middle"}" font-size="9" fill="var(--muted)">wk ${n}</text>`; });
   s += `</svg><div class="legend"><span><i style="background:var(--floor)"></i>Your wake-up</span><span><i style="background:var(--gold)"></i>Expected</span></div>`;
   const last = logged[logged.length - 1];
   return h + s + `<p class="muted" style="margin:8px 0 0">Latest: week ${last.n}, ${amTxt(last.m)}. Earlier is higher on the chart.</p></div>`;
@@ -543,18 +541,19 @@ function viewGoals() {
     else if (st.status === "upcoming") prog = `Starts ${fmt(p.start, true)}`;
     else prog = `★ ${st.wins} of ${p.target} · ${st.left} ${st.left === 1 ? "miss" : "misses"} left · ${st.toGo} ${st.toGo === 1 ? "week" : "weeks"} to go`;
     // expected outcomes, each with your actual figure where there is data
-    const ex = [];
-    if (p.kg) ex.push(`<li><b>Weight:</b> ~${p.kg} kg${lw ? ` <span class="muted">· latest ${lw.kg} kg</span>` : ""}</li>`);
-    else ex.push(`<li><b>Weight and lifts:</b> baseline</li>`);
-    if (p.lift != null) { const avg = liftAvgChange(); ex.push(`<li><b>Lifts:</b> +${p.lift}% vs baseline${avg != null ? ` <span class="muted">· now ${pctTxt(avg)}</span>` : ""}</li>`); }
-    const wa = phaseWakeAvg(p);
-    ex.push(`<li><b>Wake-up:</b> ~${amTxt(p.wake)}${wa != null ? ` <span class="muted">· your average ${amTxt(wa)}</span>` : ""}</li>`);
-    ex.push(`<li><b>Body:</b> ${esc(p.body)}</li><li><b>Wake-up:</b> ${esc(p.wakeTxt)}</li><li><b>Career:</b> ${esc(p.career)}</li>`);
+    const avg = liftAvgChange(), wa = phaseWakeAvg(p);
+    const bodyNums = p.kg
+      ? `Weight ~${p.kg} kg${lw ? ` · latest ${lw.kg} kg` : ""}<br>Lifts +${p.lift}% vs baseline${avg != null ? ` · now ${pctTxt(avg)}` : ""}`
+      : `Weight and lifts: baseline${lw ? ` · latest ${lw.kg} kg` : ""}`;
+    const ex = [
+      `<li><b>Body:</b> ${esc(p.body)}<div class="muted">${bodyNums}</div></li>`,
+      `<li><b>Wake-up:</b> ${esc(p.wakeTxt)}<div class="muted">Expected ~${amTxt(p.wake)}${wa != null ? ` · your average ${amTxt(wa)}` : ""}</div></li>`,
+      `<li><b>Career:</b> ${esc(p.career)}</li>`
+    ];
     const open = expOpen[i] != null ? expOpen[i] : i === curI;
     h += `<div class="${cls}"><div class="dot"></div><div style="flex:1;min-width:0">
-      <div class="row between"><b>${esc(p.name)}</b><span class="d">${fmt(p.start)} – ${fmt(p.end, true)}${dd > 0 && t >= p.start ? " · " + dd + " d left" : ""}</span></div>
+      <div class="row between"><b>${esc(p.name)}</b><span class="d">${fmt(p.start)} – ${fmt(p.end, true)}${dd > 0 && t >= p.start ? " · " + dd + "&nbsp;d&nbsp;left" : ""}</span></div>
       <div class="tg"><b>Target:</b> ${p.target} wins out of ${p.weeks} weeks${p.weeks > p.target ? ` (${p.weeks - p.target} ${p.weeks - p.target === 1 ? "miss" : "misses"} allowed)` : " (no misses)"}</div>
-      <div class="tg" style="margin-top:0"><b>Daily:</b> lights out by ${pmTxt(p.lo)}</div>
       <div class="pr">${prog}</div>
       <div class="cel${st.status === "missed" ? " gone" : ""}">🎁 ${esc(p.reward)}</div>
       <button class="expbtn" data-exp="${i}">Expected outcomes ${open ? "▴" : "▾"}</button>
@@ -562,9 +561,22 @@ function viewGoals() {
   });
   const fin = phaseStats(PHASES[PHASES.length - 1]), cd = daysTo(CELEBRATION);
   h += `<div class="ms cel-day${fin.status === "earned" ? " done" : ""}"><div class="dot"></div><div style="flex:1">
-    <div class="row between"><b>🎂 Grand celebration</b><span class="d">Sat 14 Oct 2028${cd > 0 ? " · in " + cd + " d" : ""}</span></div>
+    <div class="row between"><b>🎂 Grand celebration</b><span class="d">Sat 14 Oct 2028${cd > 0 ? " · in " + cd + "&nbsp;d" : ""}</span></div>
     <div class="tg">My birthday. ${fin.status === "earned" ? "Finish target hit: the foreign trip is on! ✈️" : fin.status === "missed" ? "Finish target missed this time." : "Earned by hitting the Finish phase target (14 of 14)."}</div></div></div>`;
-  h += `</div><h2>Weight</h2><div class="card">
+  h += `</div>
+    <h2>The rules</h2><div class="card"><ul class="rules">
+      <li><b>Each day:</b> lights out by ${pmTxt(phaseOf(clampPlan(t)).lo)} (moves earlier each phase) · studied 3 hrs+ · gym/workout</li>
+      <li><b>Never miss twice</b> consecutively</li>
+      <li><b>Floor day:</b> bed by ${floorBed(clampPlan(t))} (1 hour after lights out), 15 min study, 15 min movement</li>
+      <li><b>Each phase:</b> hit its ★ target to earn its reward. A missed phase's reward is gone: no comeback, no rollover.</li></ul></div>`;
+  return h;
+}
+
+// Logs tab: weight (any day), wake-up (weekly), lifts (quarterly), app lock, account.
+function viewLogs() {
+  const t = today();
+  let h = `<h1>Logs</h1><p class="sub">Weight any day · wake-up weekly · lifts quarterly</p>
+    <h2>Weight</h2><div class="card">
     <form id="wform" class="wform"><input id="kg" type="number" inputmode="decimal" step="0.1" min="30" max="200" placeholder="Weight (kg)">
       <input id="kgdate" type="date" value="${key(t)}" max="${key(t)}" aria-label="Date of weigh-in"><button class="btn" type="submit">Log</button></form>
     ${wMsg ? `<div class="muted" style="margin-top:6px">${esc(wMsg)}</div>` : ""}`;
@@ -573,24 +585,17 @@ function viewGoals() {
     h += spark(ws) + `<div style="margin-top:8px">`;
     ws.slice(-5).reverse().forEach((w) => {
       h += `<div class="row between" style="padding:6px 0;border-top:1px solid var(--line);font-size:14px"><span>${fmt(parseKey(w.d), true)}</span>
-        <span><b>${w.kg} kg</b> <button data-delw="${w.d}" class="muted" style="margin-left:10px" aria-label="Delete">✕</button></span></div>`;
+        <span><b>${w.kg} kg</b> <button data-delw="${w.d}" class="${delPending === w.d ? "warnt" : "muted"}" style="margin-left:10px" aria-label="Delete">${delPending === w.d ? "Delete?" : "✕"}</button></span></div>`;
     });
     h += `</div>`;
   } else h += `<p class="muted" style="margin:10px 0 0">Expected: ~68 kg by Apr ’27, ~70 kg by Jul ’27, ~72 kg by Jan ’28, 74 kg by Oct ’28.</p>`;
-  h += `</div>` + wakeHistoryHtml() + liftsCardHtml() + `
-    <h2>The rules</h2><div class="card"><ul class="rules">
-      <li><b>Each day:</b> lights out by ${pmTxt(phaseOf(clampPlan(t)).lo)} (moves earlier each phase) · studied 3 hrs+ · gym/workout</li>
-      <li><b>15+ / 21</b> ticks in a week = success week ★</li>
-      <li><b>Never miss twice</b> consecutively</li>
-      <li><b>Floor day:</b> bed by ${floorBed(clampPlan(t))} (1 hour after lights out), 15 min study, 15 min movement</li>
-      <li><b>Each phase:</b> hit its ★ target to earn its reward. A missed phase's reward is gone: no comeback, no rollover.</li></ul></div>
-    ${lockCardHtml()}
-    <h2>Account & backup</h2><div class="card stack">
-      <div class="muted">Signed in as ${esc(user && user.email || "")}</div>
-      <div class="row"><button class="btn ghost" data-act="export" style="flex:1">Export my data</button>
-        <label class="btn ghost" style="flex:1;cursor:pointer">Import backup<input id="importFile" type="file" accept="application/json,.json" hidden></label></div>
-      <div class="err" id="acctMsg"></div>
-      <button class="btn ghost wide" data-act="signout">Sign out</button></div>`;
+  h += `</div>` + wakeHistoryHtml() + liftsCardHtml() + lockCardHtml() + `
+    <h2>Account</h2><div class="card stack">
+      <div class="muted">${esc(user && user.email || "")}</div>
+      <div class="row"><button class="btn ghost" data-act="export" style="flex:1">Export</button>
+        <label class="btn ghost" style="flex:1;cursor:pointer;text-align:center">Import<input id="importFile" type="file" accept="application/json,.json" hidden></label>
+        <button class="btn ghost" data-act="signout" style="flex:1">Sign out</button></div>
+      ${acctText ? `<div class="muted">${esc(acctText)}</div>` : ""}</div>`;
   return h;
 }
 
@@ -626,8 +631,8 @@ function render() {
   else if (!user) h = viewLogin();
   else if (locked && lockCred()) h = viewLock();
   else {
-    h = tab === "today" ? viewToday() : tab === "weeks" ? viewWeeks() : viewGoals();
-    h += `<nav class="tabs"><div class="in">${[["today", "✅", "Today"], ["weeks", "🗓️", "Weeks"], ["goals", "🏁", "Milestones"]]
+    h = tab === "today" ? viewToday() : tab === "weeks" ? viewWeeks() : tab === "logs" ? viewLogs() : viewGoals();
+    h += `<nav class="tabs"><div class="in">${[["today", "✅", "Today"], ["weeks", "🗓️", "Weeks"], ["goals", "🏁", "Milestones"], ["logs", "📝", "Logs"]]
       .map((x) => `<button class="tab${tab === x[0] ? " on" : ""}" data-tab="${x[0]}"><span class="ti">${x[1]}</span>${x[2]}</button>`).join("")}</div></nav>`;
   }
   root.innerHTML = h;
@@ -659,17 +664,18 @@ function saveNote() {
 
 function goTab(name) {
   saveNote();
-  if (name !== tab) { wMsg = ""; lMsg = ""; wkMsg = ""; wakeEdit = false; }
+  if (name !== tab) { wMsg = ""; lMsg = ""; wkMsg = ""; wakeEdit = false; acctText = ""; delPending = null; }
   tab = name;
   try { history.replaceState(null, "", "#" + tab); } catch (_) {}
   render(); window.scrollTo(0, 0);
   if (tab === "weeks") { const el = document.getElementById("w" + weekOf(clampPlan(today()))); if (el) el.scrollIntoView({ block: "center" }); }
 }
 window.addEventListener("pageshow", () => { if (user && locked && lockCred() && !lockAbort) autoUnlock(); });
-window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (["today", "weeks", "goals"].includes(h) && h !== tab) goTab(h); });
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (["today", "weeks", "goals", "logs"].includes(h) && h !== tab) goTab(h); });
 
 /* ---------- actions ---------- */
-function acctMsg(m) { const el = document.getElementById("acctMsg"); if (el) el.textContent = m; }
+let acctText = "";
+function acctMsg(m) { acctText = m; render(); }
 function authError(e) {
   const c = (e && e.code) || "";
   if (/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c)) return "Email or password is wrong.";
@@ -695,7 +701,7 @@ document.addEventListener("click", async (e) => {
     expOpen[i] = !open; return render();
   }
   if (act === "golifts") {
-    liftQ = quarterOf(clampPlan(today())); goTab("goals");
+    liftQ = quarterOf(clampPlan(today())); goTab("logs");
     const el = document.getElementById("lifts"); if (el) el.scrollIntoView({ block: "start" });
     return;
   }
@@ -747,6 +753,8 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if (b.dataset.delw) {
+    if (delPending !== b.dataset.delw) { delPending = b.dataset.delw; return render(); } // first tap asks, second tap deletes
+    delPending = null;
     delete state.weights[b.dataset.delw]; render();
     sync.setWeight(b.dataset.delw, null).catch((err) => showStatus("error", err.code));
   }

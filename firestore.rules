@@ -48,6 +48,16 @@ service cloud.firestore {
         && okLift(request.resource.data, 'deadlift');
     }
 
+    // One document per plan week: users/{uid}/wakes/w12 -> { min } (usual wake-up, minutes after midnight)
+    match /users/{uid}/wakes/{w} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && w.matches('^w[0-9]{1,3}$')
+        && request.resource.data.keys().hasOnly(['min', 'updatedAt'])
+        && request.resource.data.min is number
+        && request.resource.data.min > 120 && request.resource.data.min < 720;
+    }
+
     // Everything else is closed.
   }
 }
