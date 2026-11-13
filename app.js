@@ -20,13 +20,13 @@ const HABITS = [
 const PHASES = [
   { name: "Q4 2026", start: [2026, 10, 11], end: [2027, 0, 2], w: [1, 8], target: 6, lo: 22 * 60, wake: 5 * 60 + 30, kg: null, lift: null,
     bodyPhase: "Foundation: full body 3x/week; DEXA scan and blood work", bodyCal: "+200 kcal over maintenance", bodyTarget: "~67 kg",
-    body: "Baseline logged; training 3x/week (full body) on a set program; ~2 g protein per kg daily", wakeTxt: "Waking 5:30 am on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Bike Upgrade" },
+    body: "Baseline logged; training 3x/week (full body) on a set program; ~2 g protein per kg daily", wakeTxt: "Waking 5:30 am on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Dinner or lunch out with the family" },
   { name: "Q1 2027", start: [2027, 0, 3], end: [2027, 3, 3], w: [9, 21], target: 10, lo: 22 * 60, wake: 5 * 60, kg: 69, lift: 15,
     bodyPhase: "Lean bulk: upper/lower split 4x/week", bodyCal: "+300 kcal", bodyTarget: "~69 kg",
     body: "~+2 kg, waist up no more than ~1 cm; first visible change in shoulders and arms", wakeTxt: "5:00 am feels normal on weekdays, lights out at 10", career: "Study, Apply, Repeat", reward: "Short foreign trip; my daughter's 1st birthday" },
   { name: "Q2 2027", start: [2027, 3, 4], end: [2027, 6, 3], w: [22, 34], target: 11, lo: 21 * 60 + 45, wake: 4 * 60 + 45, kg: 70.5, lift: 25,
     bodyPhase: "Lean bulk; deload (an easier week) every 6–8 weeks", bodyCal: "+250 kcal", bodyTarget: "~70.5 kg",
-    body: "~70.5 kg; clothes tighter at chest and arms, not the waist; people notice", wakeTxt: "4:45 am; lights out moves to 9:45", career: "Study, Apply, Repeat", reward: "Gift yourself a weekend just with friends chilling" },
+    body: "~70.5 kg; clothes tighter at chest and arms, not the waist; people notice", wakeTxt: "4:45 am; lights out moves to 9:45", career: "Study, Apply, Repeat", reward: "Bike Upgrade" },
   { name: "Q3 2027", start: [2027, 6, 4], end: [2027, 9, 2], w: [35, 47], target: 12, lo: 21 * 60 + 30, wake: 4 * 60 + 30, kg: 72, lift: 35,
     bodyPhase: "Lean bulk; 4-week mini-cut only if body fat goes above ~21%", bodyCal: "+200–250 kcal", bodyTarget: "~72 kg",
     body: "~72 kg; progress slows (normal), switch to an intermediate program", wakeTxt: "4:30 am; lights out 9:30", career: "Offer or promotion to Sr Manager Product", reward: "Recliner sofa-set" },
@@ -98,7 +98,6 @@ let state = { days: {}, weights: {}, lifts: {}, wakes: {} };
 let liftsLoaded = false, wakesLoaded = false, liftQ = null, wMsg = "", lMsg = "", wkMsg = "";
 let delPending = null, wakeW = null;
 const expOpen = {}; // which milestone cards have "Expected outcomes" open
-const bodyOpen = {}; // which milestone cards have the "Body" accordion open
 let sync = null, user = null, authReady = false, configMissing = false, loadError = "";
 let tab = ["today", "weeks", "goals", "logs"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "today";
 let sel = clampPlan(today());
@@ -523,20 +522,16 @@ function wakeHistoryHtml() {
   return h + s + `<p class="muted" style="margin:8px 0 0">Latest: week ${last.n}, ${amTxt(last.m)}. Earlier is higher on the chart.</p></div>`;
 }
 
-// Body outcome as its own accordion: Phase, Calories, Target and Notes stacked, plus your latest figures.
-function bodyAccordion(p, i, lw, avg) {
-  const open = !!bodyOpen[i];
+// Body outcome: listed like the other outcomes, with Phase, Calories, Target and Lifts stacked below it.
+function bodyOutcome(p, lw, avg) {
   const row = (label, val) => `<div class="brow"><span>${label}</span><div>${val}</div></div>`;
   const lifts = p.lift != null ? `+${p.lift}% vs baseline${avg != null ? ` · now ${pctTxt(avg)}` : ""}` : `Baseline${avg != null ? ` · now ${pctTxt(avg)}` : ""}`;
-  return `<li class="bacc"><button class="bhead" data-body="${i}" aria-expanded="${open}">
-      <span><b>Body:</b> ${esc(p.bodyTarget)}</span><span class="chev">${open ? "▴" : "▾"}</span></button>
-    ${open ? `<div class="bbody">
+  return `<li><b>Body:</b> ${esc(p.body)}<div class="bstack">
       ${row("Phase", esc(p.bodyPhase))}
       ${row("Calories", esc(p.bodyCal))}
-      ${row("Target", esc(p.bodyTarget) + (lw ? `<div class="muted">Latest ${lw.kg} kg</div>` : ""))}
+      ${row("Target", esc(p.bodyTarget) + (lw ? ` <span class="muted">· latest ${lw.kg} kg</span>` : ""))}
       ${row("Lifts", lifts)}
-      ${row("Notes", esc(p.body))}
-    </div>` : ""}</li>`;
+    </div></li>`;
 }
 
 function viewGoals() {
@@ -557,8 +552,8 @@ function viewGoals() {
     // expected outcomes, each with your actual figure where there is data
     const avg = liftAvgChange(), wa = phaseWakeAvg(p);
     const ex = [
-      bodyAccordion(p, i, lw, avg),
-      `<li><b>Wake-up:</b> ${esc(p.wakeTxt)}<div class="muted">Expected ~${amTxt(p.wake)}${wa != null ? ` · your average ${amTxt(wa)}` : ""}</div></li>`,
+      bodyOutcome(p, lw, avg),
+      `<li><b>Wake-up:</b> ${esc(p.wakeTxt)}${wa != null ? `<div class="muted">Your average ${amTxt(wa)}</div>` : ""}</li>`,
       `<li><b>Career:</b> ${esc(p.career)}</li>`
     ];
     const open = expOpen[i] != null ? expOpen[i] : i === curI;
@@ -706,7 +701,6 @@ document.addEventListener("click", async (e) => {
     render(); window.scrollTo(0, 0); return;
   }
   if (act === "gowake") { goTab("logs"); const el = document.getElementById("wakelog"); if (el) el.scrollIntoView({ block: "start" }); return; }
-  if (b.dataset.body != null) { const i = +b.dataset.body; bodyOpen[i] = !bodyOpen[i]; return render(); }
   if (b.dataset.exp != null) {
     const i = +b.dataset.exp, curI = today() < START ? 0 : phaseIdx(clampPlan(today()));
     const open = expOpen[i] != null ? expOpen[i] : i === curI;

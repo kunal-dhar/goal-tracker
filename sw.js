@@ -1,6 +1,6 @@
 // Offline support: keeps a copy of the app so it opens without internet.
 // Bump VERSION whenever you change the app files to force a refresh.
-const VERSION = "gt-v16";
+const VERSION = "gt-v18";
 const SHELL = [
   "./", "./index.html", "./app.js", "./sync.js", "./firebase-config.js", "./manifest.webmanifest",
   "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"
