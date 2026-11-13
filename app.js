@@ -488,7 +488,6 @@ function wakeHistoryHtml() {
       <div><b>Week ${curW}</b> <span class="muted">· ${fmt(wFrom)} – ${fmt(wTo, true)}</span>${m != null ? ` <span class="ok">✓ logged</span>` : ""}</div>
       <div class="row" style="gap:8px"><select id="wake" aria-label="Usual wake-up time" style="flex:1">${opts.map((x) => `<option value="${x}" ${x === shown ? "selected" : ""}>${amTxt(x)}${x === p.wake ? " (expected)" : ""}</option>`).join("")}</select>
         <button class="btn" type="submit">${m != null ? "Update" : "Save"}</button></div>
-      <div class="muted">Expected this phase: ~${amTxt(p.wake)}${m != null ? ` · logged ${amTxt(m)} (${m === p.wake ? "on time" : Math.abs(m - p.wake) + " min " + (m > p.wake ? "later" : "earlier")})` : ""}</div>
       ${wkMsg ? `<div class="err">${esc(wkMsg)}</div>` : ""}</form>`;
   if (!logged.length) return h + `</div>`;
   const all = logged.map((x) => x.m).concat(PHASES.map((p) => p.wake));
